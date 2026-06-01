@@ -4,3 +4,15 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Secrets — never commit
+.env
+*.env
+
+# NOTE: advisor.db is intentionally NOT ignored — the GitHub Actions bot
+# commits it back each run to persist the virtual account state.
+

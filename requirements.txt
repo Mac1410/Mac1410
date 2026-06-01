@@ -1,0 +1,5 @@
+streamlit>=1.40
+anthropic>=0.49
+yfinance>=0.2.40
+requests>=2.31
+pandas>=2.0
