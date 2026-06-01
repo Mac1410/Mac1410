@@ -1,0 +1,40 @@
+name: morning-report
+
+# Sends a daily morning report on the paper book to Telegram at 10:00 Italy time.
+# GitHub cron is UTC-only, so we fire at both 08:00 and 09:00 UTC and let exactly
+# one of them through by checking the Europe/Rome hour (handles CET/CEST DST).
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # 10:00 Italy in summer (CEST = UTC+2)
+    - cron: "0 9 * * *"   # 10:00 Italy in winter (CET  = UTC+1)
+  workflow_dispatch: {}   # manual test — always sends
+
+concurrency:
+  group: morning-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      ADVISOR_DATA_SOURCE: coingecko
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements-bot.txt
+      - name: Send morning report (only at 10:00 Europe/Rome)
+        run: |
+          HOUR=$(TZ=Europe/Rome date +%H)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$HOUR" = "10" ]; then
+            echo "Sending report (Rome hour=$HOUR, event=${{ github.event_name }})."
+            python btc_bot.py --report
+          else
+            echo "Rome hour is $HOUR, not 10 — skipping this trigger."
+          fi

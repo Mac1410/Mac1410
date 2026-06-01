@@ -275,6 +275,64 @@ def _print_cycle(out: dict[str, Any]) -> None:
         print(f"    {p['label']}: €{p['value']:,.2f} ({pnl})")
 
 
+REPORT_TASK = """\
+Scrivi un BREVE report mattutino in ITALIANO per il cliente sul book paper di \
+cripto. Massimo 4-5 frasi, testo semplice (niente titoli markdown): \
+(1) la lettura del regime sull'universo (RSI/MACD/trend, risk-on o risk-off), \
+(2) come stanno andando le posizioni aperte e il rischio/livello chiave da \
+seguire oggi, (3) una riga su cosa sei propenso a fare. Usa solo i numeri reali \
+del contesto. Conciso, da leggere col caffè."""
+
+
+def _report_commentary(market_md: str, account_md: str) -> str:
+    context = (
+        "=== CONTESTO REPORT MATTUTINO ===\n"
+        f"{market_md}\n"
+        "Book virtuale del cliente:\n"
+        f"{account_md}\n"
+        "=== FINE CONTESTO ==="
+    )
+    resp = _get_client().messages.create(
+        model=MODEL,
+        max_tokens=900,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "medium"},
+        system=[
+            {"type": "text", "text": prompts.stable_system_block(), "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": context},
+        ],
+        messages=[{"role": "user", "content": REPORT_TASK}],
+    )
+    return next((b.text for b in resp.content if b.type == "text"), "").strip()
+
+
+def morning_report(*, notify_telegram: bool = True) -> dict[str, Any]:
+    """Generate a daily morning report on the paper book and send it to Telegram."""
+    from datetime import date
+
+    paper_broker.init_paper()
+    snaps = btc_feed.get_universe_snapshot()
+    prices = btc_feed.prices_from_snapshots(snaps)
+    state = paper_broker.get_state(prices)
+    commentary = _report_commentary(btc_feed.format_universe(snaps),
+                                    paper_broker.format_state(state))
+
+    lines = [f"🌅 Report mattutino — {date.today().strftime('%d/%m/%Y')}", ""]
+    if state["value"] is not None:
+        lines.append(f"Valore: €{state['value']:,.2f} | P&L {state['pnl_pct']:+.2f}%")
+    lines.append(f"Cash: €{state['cash_eur']:,.2f} | {state['n_positions']} posizioni")
+    for p in state["positions"]:
+        pnl = f"{p['pnl_pct']:+.1f}%" if p["pnl_pct"] is not None else "—"
+        lines.append(f"• {p['label']}: €{p['value']:,.0f} ({pnl})")
+    if commentary:
+        lines += ["", commentary]
+    text = "\n".join(lines)
+
+    if notify_telegram:
+        send_telegram(text)
+    return {"ok": True, "text": text, "state": state}
+
+
 def main() -> None:
     try:  # make console output robust to € / em-dash on Windows cp1252
         import sys
@@ -286,11 +344,17 @@ def main() -> None:
     ap.add_argument("--loop", type=int, metavar="SECONDS", help="Run every N seconds.")
     ap.add_argument("--telegram", action="store_true", help="Push each result to Telegram.")
     ap.add_argument("--reset", action="store_true", help="Reset the virtual account to €1000 and exit.")
+    ap.add_argument("--report", action="store_true", help="Send the daily morning report to Telegram and exit.")
     args = ap.parse_args()
 
     if args.reset:
         paper_broker.reset()
         print(f"Virtual account reset to €{paper_broker.START_BALANCE_EUR:,.0f}.")
+        return
+
+    if args.report:
+        out = morning_report(notify_telegram=True)
+        print(out["text"])
         return
 
     if args.loop:
