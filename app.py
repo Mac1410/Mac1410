@@ -262,6 +262,28 @@ with tab_bot:
         })
         st.dataframe(pdf, use_container_width=True, hide_index=True)
 
+    st.markdown("##### Andamento vs solo-BTC (buy & hold)")
+    hist_rows = paper_broker.get_bot_snapshots()
+    bench = paper_broker.get_benchmark()
+    if hist_rows and bench.get("btc_qty"):
+        hist = pd.DataFrame(hist_rows)
+        hist["ts"] = pd.to_datetime(hist["ts"])
+        hist["Bot"] = hist["account_value"]
+        hist["Solo BTC"] = hist["btc_price"] * bench["btc_qty"]
+        last = hist.iloc[-1]
+        diff = last["Bot"] - last["Solo BTC"]
+        diff_pct = (diff / last["Solo BTC"] * 100) if last["Solo BTC"] else 0
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Bot", f"€{last['Bot']:,.2f}")
+        d2.metric("Solo BTC (hold)", f"€{last['Solo BTC']:,.2f}")
+        d3.metric("Bot vs BTC", f"€{diff:,.2f}", f"{diff_pct:+.2f}%")
+        st.line_chart(hist.set_index("ts")[["Bot", "Solo BTC"]])
+        st.caption("«Solo BTC» = se i €1000 iniziali fossero stati messi tutti in "
+                   "Bitcoin e tenuti. I punti si aggiungono a ogni ciclo del bot.")
+    else:
+        st.caption("Confronto vs BTC: in attesa di dati — si popola a ogni ciclo del bot. "
+                   "(In locale fai `git pull` per vedere i cicli eseguiti nel cloud.)")
+
     st.markdown("##### Trade log")
     trades = [t for t in paper_broker.get_trades(limit=80) if t["action"] != "HOLD"]
     if trades:

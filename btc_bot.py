@@ -231,6 +231,9 @@ def run_cycle(*, notify_telegram: bool = False) -> dict[str, Any]:
         results += _sweep_cash(prices, snaps)
     state = paper_broker.get_state(prices)
 
+    # Record the value-vs-BTC time series (anchors the buy-&-hold benchmark).
+    paper_broker.record_snapshot(state["value"], prices.get("BINANCE:BTCEUR"))
+
     out = {
         "ok": True, "snaps": snaps, "prices": prices, "auto_exits": auto_exits,
         "decision": decision, "results": results, "state": state,

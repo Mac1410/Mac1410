@@ -77,6 +77,24 @@ def init_paper(start_balance: float = START_BALANCE_EUR) -> None:
             );
             """
         )
+        # Time series of account value vs BTC price (for the buy-&-hold benchmark).
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bot_snapshots (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts            TEXT NOT NULL,
+                account_value REAL,
+                btc_price     REAL
+            )
+            """
+        )
+        # Migration: benchmark anchor columns on the account.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(paper_account)")}
+        if "bench_start_price" not in cols:
+            conn.execute("ALTER TABLE paper_account ADD COLUMN bench_start_price REAL")
+        if "bench_btc_qty" not in cols:
+            conn.execute("ALTER TABLE paper_account ADD COLUMN bench_btc_qty REAL")
+
         row = conn.execute("SELECT id FROM paper_account WHERE id = 1").fetchone()
         if row is None:
             now = _now()
@@ -301,6 +319,52 @@ def check_exits(prices: dict[str, float]) -> list[dict[str, Any]]:
     return results
 
 
+def get_benchmark() -> dict[str, Any]:
+    acct = get_account()
+    return {"start_price": acct.get("bench_start_price"), "btc_qty": acct.get("bench_btc_qty")}
+
+
+def ensure_benchmark(btc_price: float | None) -> None:
+    """Anchor the buy-&-hold BTC benchmark once, at the first known BTC price."""
+    if not btc_price:
+        return
+    acct = get_account()
+    if not acct.get("bench_start_price"):
+        qty = acct["start_balance"] / btc_price
+        with _conn() as conn:
+            conn.execute(
+                "UPDATE paper_account SET bench_start_price = ?, bench_btc_qty = ?, "
+                "updated_at = ? WHERE id = 1",
+                (btc_price, qty, _now()),
+            )
+
+
+def benchmark_value(btc_price: float | None) -> float | None:
+    b = get_benchmark()
+    if b["btc_qty"] and btc_price:
+        return b["btc_qty"] * btc_price
+    return None
+
+
+def record_snapshot(account_value: float | None, btc_price: float | None) -> None:
+    """Record one point of the value-vs-BTC time series (and anchor the benchmark)."""
+    ensure_benchmark(btc_price)
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO bot_snapshots (ts, account_value, btc_price) VALUES (?, ?, ?)",
+            (_now(), account_value, btc_price),
+        )
+
+
+def get_bot_snapshots(limit: int = 1000) -> list[dict[str, Any]]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT ts, account_value, btc_price FROM bot_snapshots ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
 def get_trades(limit: int = 30) -> list[dict[str, Any]]:
     with _conn() as conn:
         rows = conn.execute(
@@ -313,6 +377,7 @@ def reset(start_balance: float = START_BALANCE_EUR) -> None:
     with _conn() as conn:
         conn.execute("DELETE FROM paper_trades")
         conn.execute("DELETE FROM paper_positions")
+        conn.execute("DELETE FROM bot_snapshots")
         conn.execute("DELETE FROM paper_account")
     init_paper(start_balance)
 
