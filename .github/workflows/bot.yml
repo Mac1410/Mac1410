@@ -44,7 +44,7 @@ jobs:
         run: pip install -r requirements-bot.txt
 
       - name: Run one bot cycle
-        run: python btc_bot.py --once --telegram
+        run: python btc_bot.py --once   # no --telegram: only the daily report notifies
 
       - name: Persist virtual account state
         run: |
