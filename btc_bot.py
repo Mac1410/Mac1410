@@ -309,9 +309,20 @@ def _report_commentary(market_md: str, account_md: str) -> str:
     return next((b.text for b in resp.content if b.type == "text"), "").strip()
 
 
+def _rome_now():
+    from datetime import datetime, timezone
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Europe/Rome"))
+    except Exception:
+        # Fallback if tz data is missing: approximate CEST (UTC+2).
+        from datetime import timedelta
+        return datetime.now(timezone.utc) + timedelta(hours=2)
+
+
 def morning_report(*, notify_telegram: bool = True) -> dict[str, Any]:
     """Generate a daily morning report on the paper book and send it to Telegram."""
-    from datetime import date
+    rome = _rome_now()
 
     paper_broker.init_paper()
     snaps = btc_feed.get_universe_snapshot()
@@ -320,7 +331,7 @@ def morning_report(*, notify_telegram: bool = True) -> dict[str, Any]:
     commentary = _report_commentary(btc_feed.format_universe(snaps),
                                     paper_broker.format_state(state))
 
-    lines = [f"🌅 Report mattutino — {date.today().strftime('%d/%m/%Y')}", ""]
+    lines = [f"🌅 Report mattutino — {rome.strftime('%d/%m/%Y')}", ""]
     if state["value"] is not None:
         lines.append(f"Valore: €{state['value']:,.2f} | P&L {state['pnl_pct']:+.2f}%")
     lines.append(f"Cash: €{state['cash_eur']:,.2f} | {state['n_positions']} posizioni")
@@ -333,6 +344,7 @@ def morning_report(*, notify_telegram: bool = True) -> dict[str, Any]:
 
     if notify_telegram:
         send_telegram(text)
+    paper_broker.set_meta("last_report_date", rome.strftime("%Y-%m-%d"))
     return {"ok": True, "text": text, "state": state}
 
 
@@ -347,7 +359,9 @@ def main() -> None:
     ap.add_argument("--loop", type=int, metavar="SECONDS", help="Run every N seconds.")
     ap.add_argument("--telegram", action="store_true", help="Push each result to Telegram.")
     ap.add_argument("--reset", action="store_true", help="Reset the virtual account to €1000 and exit.")
-    ap.add_argument("--report", action="store_true", help="Send the daily morning report to Telegram and exit.")
+    ap.add_argument("--report", action="store_true", help="Force-send the daily morning report and exit.")
+    ap.add_argument("--report-if-due", action="store_true",
+                    help="Send the morning report only if it's >=10:00 Rome and not already sent today.")
     args = ap.parse_args()
 
     if args.reset:
@@ -358,6 +372,17 @@ def main() -> None:
     if args.report:
         out = morning_report(notify_telegram=True)
         print(out["text"])
+        return
+
+    if args.report_if_due:
+        rome = _rome_now()
+        today = rome.strftime("%Y-%m-%d")
+        last = paper_broker.get_meta("last_report_date")
+        if rome.hour >= 10 and last != today:
+            morning_report(notify_telegram=True)
+            print(f"Report inviato (ora Roma {rome.hour}:00, data {today}).")
+        else:
+            print(f"Report non dovuto (ora Roma={rome.hour}, ultimo inviato={last}).")
         return
 
     if args.loop:

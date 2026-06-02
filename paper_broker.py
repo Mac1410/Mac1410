@@ -88,6 +88,10 @@ def init_paper(start_balance: float = START_BALANCE_EUR) -> None:
             )
             """
         )
+        # Small key/value store (e.g. last_report_date for the daily report guard).
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS bot_meta (key TEXT PRIMARY KEY, value TEXT)"
+        )
         # Migration: benchmark anchor columns on the account.
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(paper_account)")}
         if "bench_start_price" not in cols:
@@ -317,6 +321,22 @@ def check_exits(prices: dict[str, float]) -> list[dict[str, Any]]:
             res["exit_reason"] = reason
             results.append(res)
     return results
+
+
+def get_meta(key: str) -> str | None:
+    init_paper()
+    with _conn() as conn:
+        row = conn.execute("SELECT value FROM bot_meta WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_meta(key: str, value: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO bot_meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
 
 def get_benchmark() -> dict[str, Any]:

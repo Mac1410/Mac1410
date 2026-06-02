@@ -22,7 +22,7 @@ permissions:
   contents: write             # needed to commit advisor.db back
 
 concurrency:
-  group: crypto-paper-bot
+  group: account-state        # shared with morning-report → never write state concurrently
   cancel-in-progress: false   # never cancel a run mid-trade
 
 jobs:
@@ -55,5 +55,6 @@ jobs:
             echo "No state change to commit."
           else
             git commit -m "bot: virtual account state $(date -u +%FT%TZ) [skip ci]"
+            git pull --rebase origin main || true
             git push
           fi

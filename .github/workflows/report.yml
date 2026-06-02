@@ -1,17 +1,25 @@
 name: morning-report
 
-# Sends a daily morning report on the paper book to Telegram at 10:00 Italy time.
-# GitHub cron is UTC-only, so we fire at both 08:00 and 09:00 UTC and let exactly
-# one of them through by checking the Europe/Rome hour (handles CET/CEST DST).
+# Daily morning report on the paper book → Telegram, at 10:00 Italy time.
+#
+# GitHub's scheduled triggers are best-effort and are frequently delayed or
+# skipped. So instead of a single fixed time, we attempt several times through
+# the morning and use a once-per-day guard in the code (btc_bot.py
+# --report-if-due): it sends only on the first run where it's >= 10:00 in
+# Europe/Rome and a report hasn't already been sent today. This survives skipped
+# triggers and handles CET/CEST automatically.
 
 on:
   schedule:
-    - cron: "0 8 * * *"   # 10:00 Italy in summer (CEST = UTC+2)
-    - cron: "0 9 * * *"   # 10:00 Italy in winter (CET  = UTC+1)
-  workflow_dispatch: {}   # manual test — always sends
+    - cron: "0,30 7-9 * * *"   # 07:00–09:30 UTC every 30 min
+    - cron: "0 10 * * *"       # 10:00 UTC backstop
+  workflow_dispatch: {}        # manual run → always sends (forced)
+
+permissions:
+  contents: write              # persist last_report_date in advisor.db
 
 concurrency:
-  group: morning-report
+  group: account-state         # shared with crypto-paper-bot → no concurrent state writes
   cancel-in-progress: false
 
 jobs:
@@ -29,12 +37,22 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements-bot.txt
-      - name: Send morning report (only at 10:00 Europe/Rome)
+      - name: Send report (forced on manual run, else only if due)
         run: |
-          HOUR=$(TZ=Europe/Rome date +%H)
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$HOUR" = "10" ]; then
-            echo "Sending report (Rome hour=$HOUR, event=${{ github.event_name }})."
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             python btc_bot.py --report
           else
-            echo "Rome hour is $HOUR, not 10 — skipping this trigger."
+            python btc_bot.py --report-if-due
+          fi
+      - name: Persist report state
+        run: |
+          git config user.name "crypto-paper-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add advisor.db
+          if git diff --staged --quiet; then
+            echo "No state change to commit."
+          else
+            git commit -m "report: state $(date -u +%FT%TZ) [skip ci]"
+            git pull --rebase origin main || true
+            git push
           fi
