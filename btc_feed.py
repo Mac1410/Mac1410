@@ -267,6 +267,13 @@ def prices_from_snapshots(snaps: dict[str, dict[str, Any]]) -> dict[str, float]:
     return {sym: s["price"] for sym, s in snaps.items() if s.get("price")}
 
 
+def live_prices(universe: list[dict[str, str]] | None = None) -> dict[str, float]:
+    """Fast live prices {tv_symbol: eur} via one CoinGecko call (no indicators)."""
+    universe = universe or CRYPTO_UNIVERSE
+    cg = _coingecko_multi([e["cg"] for e in universe])
+    return {e["tv"]: cg[e["cg"]] for e in universe if e["cg"] in cg}
+
+
 def format_universe(snaps: dict[str, dict[str, Any]]) -> str:
     """Compact multi-symbol briefing for the model."""
     if not snaps:

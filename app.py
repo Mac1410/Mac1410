@@ -19,6 +19,7 @@ import streamlit as st
 
 import analyzer
 import btc_bot
+import btc_feed
 import memory
 import paper_broker
 from prices import format_prices_for_prompt, price_holdings
@@ -217,7 +218,15 @@ with tab_bot:
     )
 
     paper_broker.init_paper()
-    bot_state = paper_broker.get_state()
+
+    @st.cache_data(ttl=60)
+    def _live_prices():
+        try:
+            return btc_feed.live_prices()
+        except Exception:
+            return {}
+
+    bot_state = paper_broker.get_state(_live_prices())
 
     b1, b2, b3, b4 = st.columns(4)
     b1.metric("Account value", f"€{bot_state['value']:,.2f}")
