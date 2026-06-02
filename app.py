@@ -13,6 +13,7 @@ Environment:
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
@@ -273,13 +274,24 @@ with tab_bot:
         st.dataframe(pdf, use_container_width=True, hide_index=True)
 
     st.markdown("##### Andamento vs solo-BTC (buy & hold)")
-    hist_rows = paper_broker.get_bot_snapshots()
     bench = paper_broker.get_benchmark()
-    if hist_rows and bench.get("btc_qty"):
-        hist = pd.DataFrame(hist_rows)
-        hist["ts"] = pd.to_datetime(hist["ts"])
-        hist["Bot"] = hist["account_value"]
-        hist["Solo BTC"] = hist["btc_price"] * bench["btc_qty"]
+    acct = paper_broker.get_account()
+    qty = bench.get("btc_qty")
+    if qty:
+        rows = [{"ts": acct["created_at"], "Bot": acct["start_balance"],
+                 "Solo BTC": acct["start_balance"]}]  # common €1000 origin
+        for s in paper_broker.get_bot_snapshots():
+            if s["btc_price"]:
+                rows.append({"ts": s["ts"], "Bot": s["account_value"],
+                             "Solo BTC": s["btc_price"] * qty})
+        live_btc = _live_prices().get("BINANCE:BTCEUR")
+        if live_btc and bot_state["value"] is not None:
+            rows.append({"ts": datetime.now(timezone.utc).isoformat(),
+                         "Bot": bot_state["value"], "Solo BTC": live_btc * qty})
+
+        hist = pd.DataFrame(rows)
+        hist["ts"] = pd.to_datetime(hist["ts"], utc=True)
+        hist = hist.sort_values("ts").drop_duplicates("ts")
         last = hist.iloc[-1]
         diff = last["Bot"] - last["Solo BTC"]
         diff_pct = (diff / last["Solo BTC"] * 100) if last["Solo BTC"] else 0
@@ -288,8 +300,9 @@ with tab_bot:
         d2.metric("Solo BTC (hold)", f"€{last['Solo BTC']:,.2f}")
         d3.metric("Bot vs BTC", f"€{diff:,.2f}", f"{diff_pct:+.2f}%")
         st.line_chart(hist.set_index("ts")[["Bot", "Solo BTC"]])
-        st.caption("«Solo BTC» = se i €1000 iniziali fossero stati messi tutti in "
-                   "Bitcoin e tenuti. I punti si aggiungono a ogni ciclo del bot.")
+        st.caption("«Solo BTC» = i €1000 iniziali messi tutti in Bitcoin al via "
+                   "dell'esperimento e tenuti. Entrambe le curve partono da €1000; "
+                   "l'ultimo punto usa i prezzi live.")
     else:
         st.caption("Confronto vs BTC: in attesa di dati — si popola a ogni ciclo del bot. "
                    "(In locale fai `git pull` per vedere i cicli eseguiti nel cloud.)")
