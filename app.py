@@ -264,11 +264,12 @@ with tab_bot:
     if bot_state["positions"]:
         st.markdown("##### Open positions")
         pdf = pd.DataFrame(bot_state["positions"])[
-            ["label", "qty", "avg_cost", "price", "value", "pnl_pct", "active_stop", "active_take"]
+            ["side", "label", "qty", "avg_cost", "price", "value", "pnl_pct", "active_stop", "active_take"]
         ].rename(columns={
-            "label": "Asset", "qty": "Qty", "avg_cost": "Avg cost", "price": "Price",
+            "side": "Side", "label": "Asset", "qty": "Qty", "avg_cost": "Entry", "price": "Price",
             "value": "Value", "pnl_pct": "P&L %", "active_stop": "Stop", "active_take": "Target",
         })
+        pdf["Side"] = pdf["Side"].str.upper()
         st.dataframe(pdf, use_container_width=True, hide_index=True)
 
     st.markdown("##### Andamento vs solo-BTC (buy & hold)")

@@ -51,8 +51,8 @@ DECISION_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "symbol": {"type": "string", "enum": _LABELS},
-                    "action": {"type": "string", "enum": ["BUY", "SELL", "HOLD"]},
-                    "size_pct": {"type": "number", "description": "BUY: % of available cash. SELL: % of that position. 0 for HOLD."},
+                    "action": {"type": "string", "enum": ["BUY", "SELL", "SHORT", "COVER", "HOLD"]},
+                    "size_pct": {"type": "number", "description": "BUY/SHORT: % of free cash. SELL/COVER: % of that position. 0 for HOLD."},
                     "confidence": {"type": "number", "description": "0 to 1."},
                     "thesis": {"type": "string", "description": "Max 2 sentences."},
                     "stop_loss": {"type": ["number", "null"]},
@@ -68,31 +68,33 @@ DECISION_SCHEMA = {
 }
 
 DECISION_TASK = f"""\
-You actively manage a VIRTUAL multi-crypto paper account (EUR). This is an active \
-experiment — do NOT sit 100% in cash. Build and maintain a FOCUSED book of \
-high-conviction crypto positions and rotate as theses change.
+You actively manage a VIRTUAL multi-crypto paper account (EUR), and you can go \
+both LONG and SHORT. Build a FOCUSED book and aim to profit in BOTH directions — \
+make money when the market rises (long) AND when it falls (short).
 
-Universe you may trade: {", ".join(_LABELS)}.
+Universe: {", ".join(_LABELS)}.
 
-Rules (from the client's philosophy + project skills):
-- STAY FULLY INVESTED. The client does not want idle cash — deploy ~all of it \
-across the book. Target roughly 0% cash. Any leftover cash is auto-swept into \
-your chosen positions, so allocate as if every euro must be working.
-- Conviction over diversification: hold 2–{MAX_POSITIONS} positions at a time — \
-never more than {MAX_POSITIONS}, and at least 2 so you're not all-in on one name. \
-A few strong ideas beat many weak ones.
-- Use the live indicators (RSI, MACD, Bollinger, EMA) to judge momentum, trend, \
-and over-bought/over-sold — rank the strongest relative setups and weight toward them.
-- Every BUY needs a one-to-two sentence thesis AND a pre-committed stop_loss \
-(and ideally a take_profit), in EUR price terms.
-- Rotate, don't hoard cash: trim/exit weak names on thesis break and redeploy that \
-capital into the strongest setups. Being in cash is only acceptable transiently \
-(e.g. just after a stop-out) until you re-enter.
-- No leverage: you can only deploy the cash you have; never more than 100% invested.
+Actions per symbol:
+- BUY   = open/add a LONG (profit if price rises). size_pct = % of free cash.
+- SELL  = reduce/close a LONG. size_pct = % of that long.
+- SHORT = open/add a SHORT (profit if price FALLS). size_pct = % of free cash locked as collateral.
+- COVER = reduce/close a SHORT. size_pct = % of that short.
+- HOLD  = do nothing on that name.
 
-Return a set of orders (one per symbol you want to act on). size_pct for BUY = \
-percent of CURRENT cash to deploy into that name. Respond strictly in the required \
-JSON schema."""
+Rules (philosophy + skills):
+- NO LEVERAGE. Shorts are cash-collateralised 1:1, so (longs + short collateral) \
+never exceeds your capital. A symbol is either long OR short — close it to flip.
+- Read the regime with the live indicators (RSI, MACD, Bollinger, EMA): if trend/ \
+momentum is clearly DOWN, prefer SHORTS on the weakest names; if UP, prefer LONGS \
+on the strongest; in chop, stay light and don't force trades.
+- Hold 2–{MAX_POSITIONS} positions at a time, never more. Conviction over breadth. \
+Deploy meaningfully — don't sit on large idle cash when there are clear setups.
+- EVERY new position needs a ≤2-sentence thesis AND a pre-committed stop_loss:
+  · LONG  → stop_loss BELOW entry, take_profit ABOVE.
+  · SHORT → stop_loss ABOVE entry, take_profit BELOW.
+- Exit on thesis break, not noise. Rotate from weak into strong ideas.
+
+Return a set of orders. Respond strictly in the required JSON schema."""
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -133,50 +135,46 @@ def decide(snaps: dict, state: dict) -> dict[str, Any]:
 
 
 def _execute_orders(decision: dict, prices: dict, snaps: dict) -> list[dict[str, Any]]:
-    """Apply orders: SELLs first (free cash), then BUYs with caps."""
+    """Apply orders: closes/reductions (SELL, COVER) first to free cash, then opens (BUY, SHORT) with caps."""
+    orders = decision.get("orders", [])
+    closing = [o for o in orders if o["action"] in ("SELL", "COVER")]
+    opening = [o for o in orders if o["action"] in ("BUY", "SHORT")]
+    results: list[dict[str, Any]] = []
+
+    for o in closing:
+        tv = _LABEL_TO_TV.get(o["symbol"])
+        if not tv or tv not in prices:
+            continue
+        results.append(paper_broker.execute_order(
+            symbol=tv, label=o["symbol"], action=o["action"], size_pct=o["size_pct"],
+            price=prices[tv], confidence=o.get("confidence"), thesis=o.get("thesis"),
+            source=snaps.get(tv, {}).get("source")))
+
+    # Recompute after closes free up cash / slots.
     state = paper_broker.get_state(prices)
     equity = state["value"]
     held = {p["symbol"] for p in state["positions"]}
-    held_value = {p["symbol"]: p["value"] for p in state["positions"]}
+    used = {p["symbol"]: (p["collateral"] if p["side"] == "short" else p["value"])
+            for p in state["positions"]}
+    cap_value = equity * MAX_POSITION_PCT / 100.0
 
-    orders = decision.get("orders", [])
-    sells = [o for o in orders if o["action"] == "SELL"]
-    buys = [o for o in orders if o["action"] == "BUY"]
-    results: list[dict[str, Any]] = []
-
-    for o in sells:
+    for o in opening:
         tv = _LABEL_TO_TV.get(o["symbol"])
         if not tv or tv not in prices:
             continue
-        res = paper_broker.execute_order(
-            symbol=tv, label=o["symbol"], action="SELL", size_pct=o["size_pct"],
-            price=prices[tv], confidence=o.get("confidence"), thesis=o.get("thesis"),
-            source=snaps.get(tv, {}).get("source"),
-        )
-        if res["executed"]:
-            held.discard(tv)
-            results.append(res)
-
-    for o in buys:
-        tv = _LABEL_TO_TV.get(o["symbol"])
-        if not tv or tv not in prices:
-            continue
-        # Enforce the max-positions cap for *new* names.
         if tv not in held and len(held) >= MAX_POSITIONS:
-            results.append({"executed": False, "label": o["symbol"], "action": "BUY",
-                            "detail": f"BUY {o['symbol']} skipped — max {MAX_POSITIONS} positions reached."})
+            results.append({"executed": False, "label": o["symbol"], "action": o["action"],
+                            "detail": f"{o['action']} {o['symbol']} skipped — max {MAX_POSITIONS} posizioni."})
             continue
-        # Cap any single position at MAX_POSITION_PCT of equity.
-        cap_value = equity * MAX_POSITION_PCT / 100.0
-        eur_cap = max(0.0, cap_value - held_value.get(tv, 0.0))
+        eur_cap = max(0.0, cap_value - used.get(tv, 0.0))
         res = paper_broker.execute_order(
-            symbol=tv, label=o["symbol"], action="BUY", size_pct=o["size_pct"],
+            symbol=tv, label=o["symbol"], action=o["action"], size_pct=o["size_pct"],
             price=prices[tv], eur_cap=eur_cap, confidence=o.get("confidence"),
             thesis=o.get("thesis"), stop_loss=o.get("stop_loss"),
-            take_profit=o.get("take_profit"), source=snaps.get(tv, {}).get("source"),
-        )
+            take_profit=o.get("take_profit"), source=snaps.get(tv, {}).get("source"))
         if res["executed"]:
             held.add(tv)
+            used[tv] = used.get(tv, 0.0) + res["eur_amount"]
         results.append(res)
 
     return results
@@ -190,11 +188,13 @@ def _sweep_cash(prices: dict, snaps: dict) -> list[dict[str, Any]]:
     """
     state = paper_broker.get_state(prices)
     cash, equity = state["cash_eur"], state["value"]
-    if cash < MIN_CASH_SWEEP or not state["positions"]:
+    longs = [p for p in state["positions"] if p["side"] == "long"]
+    # If the book holds any short, respect the model's allocation — don't force-deploy.
+    if cash < MIN_CASH_SWEEP or not longs or any(p["side"] == "short" for p in state["positions"]):
         return []
 
     cap_value = equity * MAX_POSITION_PCT / 100.0
-    rooms = {p["symbol"]: (p, max(0.0, cap_value - p["value"])) for p in state["positions"]}
+    rooms = {p["symbol"]: (p, max(0.0, cap_value - p["value"])) for p in longs}
     total_room = sum(r for _, r in rooms.values())
     if total_room <= 0:
         return []
