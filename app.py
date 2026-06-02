@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -299,10 +300,30 @@ with tab_bot:
         d1.metric("Bot", f"€{last['Bot']:,.2f}")
         d2.metric("Solo BTC (hold)", f"€{last['Solo BTC']:,.2f}")
         d3.metric("Bot vs BTC", f"€{diff:,.2f}", f"{diff_pct:+.2f}%")
-        st.line_chart(hist.set_index("ts")[["Bot", "Solo BTC"]])
+
+        # Zoom the Y axis to the actual data range so the gap is visible.
+        long = hist.melt("ts", value_vars=["Bot", "Solo BTC"],
+                         var_name="Serie", value_name="Valore")
+        lo, hi = long["Valore"].min(), long["Valore"].max()
+        pad = max(1.0, (hi - lo) * 0.15)
+        chart = (
+            alt.Chart(long)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("ts:T", title=None),
+                y=alt.Y("Valore:Q", title="€",
+                        scale=alt.Scale(domain=[lo - pad, hi + pad], zero=False)),
+                color=alt.Color("Serie:N", title=None,
+                                scale=alt.Scale(domain=["Bot", "Solo BTC"],
+                                                range=["#D4AF37", "#5A9BD8"])),
+                tooltip=["ts:T", "Serie:N", alt.Tooltip("Valore:Q", format=",.2f")],
+            )
+            .properties(height=340)
+        )
+        st.altair_chart(chart, use_container_width=True)
         st.caption("«Solo BTC» = i €1000 iniziali messi tutti in Bitcoin al via "
-                   "dell'esperimento e tenuti. Entrambe le curve partono da €1000; "
-                   "l'ultimo punto usa i prezzi live.")
+                   "dell'esperimento e tenuti. Asse Y zoomato sull'intervallo reale "
+                   "per evidenziare la differenza; l'ultimo punto usa i prezzi live.")
     else:
         st.caption("Confronto vs BTC: in attesa di dati — si popola a ogni ciclo del bot. "
                    "(In locale fai `git pull` per vedere i cicli eseguiti nel cloud.)")
