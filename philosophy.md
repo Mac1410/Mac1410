@@ -102,8 +102,8 @@ meccanica — al livello prefissato — non discrezionale.**
   **mai** lo stop più lontano per "dare un'altra chance".
 
 ## Selettività e sizing (aggressivo ma selettivo)
-- **Analizza TUTTO l'universo** di cripto, ma **apri solo le poche (0–3)
-  opportunità più probabili**: mai più di 3 posizioni contemporanee. Si interviene
+- **Analizza TUTTO l'universo** di cripto, ma **apri solo le poche (0–4)
+  opportunità più probabili**: mai più di 4 posizioni contemporanee. Si interviene
   solo sui nomi dove il quadro multi-timeframe e i livelli si allineano meglio.
 - **Investire tutto NON è obbligatorio.** Se nessun setup convince (mercato
   laterale, segnali deboli o in conflitto), **non si fa nulla**: meglio **zero
