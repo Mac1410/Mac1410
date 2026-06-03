@@ -258,7 +258,9 @@ def get_universe_snapshot(universe: list[dict[str, str]] | None = None) -> dict[
             if snap is None:
                 tv_ok = False
                 break
-            snap["mtf"] = market_data.multi_timeframe(entry["cg"])  # multi-timeframe from CoinGecko history
+            analysis = market_data.multi_timeframe(entry["cg"], snap["price"])  # MTF + levels from CoinGecko
+            snap["mtf"] = analysis["reads"]
+            snap["levels"] = analysis["levels"]
             snaps[entry["tv"]] = snap
             time.sleep(1.0)  # throttle CoinGecko (multi-timeframe is call-heavy)
         if tv_ok and snaps:
@@ -311,5 +313,15 @@ def format_universe(snaps: dict[str, dict[str, Any]]) -> str:
                 r = mtf.get(tf_name)
                 if r:
                     out.append(f"   · {tf_name}: {r['trend']} / RSI {r.get('rsi')} / MACD {r.get('macd')}")
+        lv = s.get("levels")
+        if lv:
+            rows = []
+            for tf_name in ("settimanale", "giornaliera", "oraria"):
+                k = lv.get(tf_name)
+                if k and (k.get("support") or k.get("resistance")):
+                    rows.append(f"   · {tf_name}: supporto €{k.get('support')} / resistenza €{k.get('resistance')}")
+            if rows:
+                out.append("- Massimi/minimi locali (supporto sotto / resistenza sopra il prezzo):")
+                out += rows
         out.append("")
     return "\n".join(out)

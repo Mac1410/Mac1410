@@ -172,9 +172,43 @@ def multi_timeframe_reads(closes_by_tf: dict[str, list[float]]) -> dict[str, Any
     return {tf: _trend_read(c) for tf, c in closes_by_tf.items()}
 
 
-def multi_timeframe(cg_id: str) -> dict[str, Any]:
-    """Public: per-timeframe trend reads for one coin."""
-    return multi_timeframe_reads(_multi_timeframe_closes(cg_id))
+def _swings(closes: list[float], radius: int = 3) -> tuple[list[float], list[float]]:
+    """Local maxima/minima: a point that is the highest/lowest within ±radius."""
+    highs, lows = [], []
+    for i in range(radius, len(closes) - radius):
+        w = closes[i - radius:i + radius + 1]
+        if closes[i] == max(w):
+            highs.append(closes[i])
+        if closes[i] == min(w):
+            lows.append(closes[i])
+    return highs, lows
+
+
+def key_levels(closes: list[float], price: float | None, radius: int = 3) -> dict[str, Any] | None:
+    """Nearest support (local low below price) / resistance (local high above),
+    plus the recent swing high/low — for anticipating bounces and placing stops."""
+    if not price or not closes or len(closes) < 2 * radius + 1:
+        return None
+    highs, lows = _swings(closes, radius)
+    res = min((h for h in highs if h > price), default=None)
+    sup = max((lo for lo in lows if lo < price), default=None)
+    return {
+        "support": round(sup, 4) if sup else None,
+        "resistance": round(res, 4) if res else None,
+        "recent_low": round(min(lows), 4) if lows else None,
+        "recent_high": round(max(highs), 4) if highs else None,
+    }
+
+
+def _levels_by_tf(tf_closes: dict[str, list[float]], price: float | None) -> dict[str, Any]:
+    return {tf: key_levels(tf_closes.get(tf, []), price)
+            for tf in ("settimanale", "giornaliera", "oraria")}
+
+
+def multi_timeframe(cg_id: str, price: float | None = None) -> dict[str, Any]:
+    """Public: per-timeframe trend reads + local support/resistance for one coin."""
+    tf = _multi_timeframe_closes(cg_id)
+    return {"reads": multi_timeframe_reads(tf), "levels": _levels_by_tf(tf, price)}
 
 
 def build_snapshot(entry: dict[str, str], price: float) -> dict[str, Any]:
@@ -185,6 +219,7 @@ def build_snapshot(entry: dict[str, str], price: float) -> dict[str, Any]:
     """
     tf_closes = _multi_timeframe_closes(entry["cg"])
     mtf = multi_timeframe_reads(tf_closes)
+    levels = _levels_by_tf(tf_closes, price)
     base = tf_closes.get("oraria") or tf_closes.get("giornaliera") or []
     ind = compute_indicators(base)
 
@@ -200,5 +235,6 @@ def build_snapshot(entry: dict[str, str], price: float) -> dict[str, Any]:
         }
     return {
         "source": "coingecko", "symbol": entry["tv"], "label": entry["label"],
-        "price": price, "ohlcv": ohlcv, "indicators": _indicator_studies(ind), "mtf": mtf,
+        "price": price, "ohlcv": ohlcv, "indicators": _indicator_studies(ind),
+        "mtf": mtf, "levels": levels,
     }

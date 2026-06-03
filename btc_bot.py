@@ -93,6 +93,13 @@ background-trend filter (lower weight — don't trade hard against the monthly t
 and remember a weekly drop inside a rising monthly can be just noise); use MINUTE \
 only to fine-tune entry. Enter when the higher-weighted windows AGREE; if they \
 conflict, stay out.
+- LOCAL HIGHS/LOWS: each asset also lists recent local highs/lows per timeframe \
+(support below the price / resistance above). Use them to ANTICIPATE BOUNCES — \
+near strong multi-timeframe SUPPORT a rebound is more likely (favour long / cover \
+shorts / take profit on shorts); near strong RESISTANCE a rejection is more likely \
+(favour short / take profit on longs). Levels confirmed across timeframes matter \
+more. Put stops just beyond these levels and targets at the next opposite level. \
+Act on confirmation (price holds the level + momentum turns), not blindly.
 - Read the regime with the indicators (RSI, MACD, Bollinger, EMA): if trend/ \
 momentum is clearly DOWN, prefer SHORTS on the weakest names; if UP, prefer LONGS \
 on the strongest; in chop, stay light and don't force trades.

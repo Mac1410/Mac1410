@@ -35,6 +35,21 @@ trade**:
   di fondo); entra quando oraria e giornaliera **concordano**. Se le finestre
   principali sono in **disaccordo**, il setup è poco chiaro → meglio aspettare.
 
+## Massimi e minimi locali (supporti/resistenze multi-timeframe)
+Su più finestre si individuano i **massimi e minimi locali** recenti: fanno da
+**resistenze** (massimi sopra il prezzo) e **supporti** (minimi sotto). Si usano per:
+- **Anticipare i rimbalzi:** vicino a un **supporto** forte (meglio se confermato
+  su più finestre) il rimbalzo è più probabile → valuta **long / chiusura short /
+  presa di profitto sugli short**. Vicino a una **resistenza** forte → rifiuto più
+  probabile → valuta **short / presa di profitto sui long**.
+- **Stop e target strutturali:** stop appena oltre il livello (sotto il supporto
+  per i long, sopra la resistenza per gli short); target al livello opposto più vicino.
+- **Confluenza:** un livello vale di più se coincide su più finestre temporali.
+
+Il rimbalzo è una **probabilità, non una certezza**: agisci con **conferma** (il
+prezzo regge il livello e il momentum gira), non anticipando alla cieca un livello
+che potrebbe essere bucato.
+
 ## Direzione
 - **Net LONG** quando il quadro è risk-on (più nomi in uptrend).
 - **Net SHORT** quando è risk-off (più nomi in downtrend). Non si resta long
