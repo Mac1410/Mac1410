@@ -33,7 +33,7 @@ import prompts
 from telegram_alert import send_telegram
 
 MODEL = "claude-opus-4-8"
-MAX_POSITIONS = 4               # focused book — "not too many"
+MAX_POSITIONS = 3               # scan many, act on few — selective
 MAX_POSITION_PCT = 60.0         # cap any single position at 60% of equity
 FULLY_INVESTED = False          # may invest up to 100%, but NOT forced — cash is allowed
 MIN_CASH_SWEEP = 5.0            # below this, leftover cash is left alone
@@ -103,8 +103,11 @@ Act on confirmation (price holds the level + momentum turns), not blindly.
 - Read the regime with the indicators (RSI, MACD, Bollinger, EMA): if trend/ \
 momentum is clearly DOWN, prefer SHORTS on the weakest names; if UP, prefer LONGS \
 on the strongest; in chop, stay light and don't force trades.
-- Hold 2–{MAX_POSITIONS} positions at a time, never more. Conviction over breadth. \
-Deploy meaningfully — don't sit on large idle cash when there are clear setups.
+- SCAN THE WHOLE universe, but OPEN only the few (0–{MAX_POSITIONS}) \
+highest-probability setups — never more than {MAX_POSITIONS} positions at a time. \
+It is perfectly fine to open ZERO and stay 100% in cash if nothing clearly \
+qualifies: do NOT force trades. Selectivity and conviction over breadth — only \
+the names where the multi-timeframe picture and the levels line up best.
 - EVERY new position needs a ≤2-sentence thesis AND BOTH a pre-committed
   stop_loss AND take_profit (NEVER null). Place them at TECHNICAL LEVELS read
   from the data — the recent high/low of the window, the Bollinger bands, nearby

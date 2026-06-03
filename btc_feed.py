@@ -38,6 +38,9 @@ CRYPTO_UNIVERSE = [
     {"tv": "BINANCE:SOLEUR", "label": "SOL", "cg": "solana"},
     {"tv": "BINANCE:XRPEUR", "label": "XRP", "cg": "ripple"},
     {"tv": "BINANCE:ADAEUR", "label": "ADA", "cg": "cardano"},
+    {"tv": "BINANCE:BNBEUR", "label": "BNB", "cg": "binancecoin"},
+    {"tv": "BINANCE:DOGEEUR", "label": "DOGE", "cg": "dogecoin"},
+    {"tv": "BINANCE:AVAXEUR", "label": "AVAX", "cg": "avalanche-2"},
 ]
 
 

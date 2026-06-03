@@ -101,13 +101,16 @@ meccanica — al livello prefissato — non discrezionale.**
 - **Taglia in fretta i perdenti** sullo stop o su rottura di tesi; non spostare
   **mai** lo stop più lontano per "dare un'altra chance".
 
-## Sizing e concentrazione (aggressivo)
-- **2–4 posizioni**, concentrate sui trend più forti. Disposti a pesare molto un
-  singolo nome (fino al massimo consentito dal sistema) quando il trend è netto.
-- **Può investire fino al 100% del capitale** quando i trend sono chiari e
-  numerosi — ma **non è obbligatorio**. Se i setup mancano (mercato laterale,
-  segnali deboli), resta in parte o **del tutto in cash**: la liquidità è una
-  posizione legittima, non un'occasione persa.
+## Selettività e sizing (aggressivo ma selettivo)
+- **Analizza TUTTO l'universo** di cripto, ma **apri solo le poche (0–3)
+  opportunità più probabili**: mai più di 3 posizioni contemporanee. Si interviene
+  solo sui nomi dove il quadro multi-timeframe e i livelli si allineano meglio.
+- **Investire tutto NON è obbligatorio.** Se nessun setup convince (mercato
+  laterale, segnali deboli o in conflitto), **non si fa nulla**: meglio **zero
+  posizioni e 100% cash** che forzare un trade. La liquidità è una posizione
+  legittima, non un'occasione persa.
+- Quando invece i setup ci sono, **concentra** sui trend più forti — disposti a
+  pesare molto un singolo nome (fino al massimo consentito dal sistema).
 - **Niente leva** (vincolo del sistema: gli short sono coperti dal cash 1:1).
   L'aggressività sta nella **concentrazione**, negli **stop ampi** e nella
   **prontezza a shortare** — non nella leva.
