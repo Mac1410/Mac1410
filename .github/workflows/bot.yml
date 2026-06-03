@@ -46,6 +46,9 @@ jobs:
       - name: Run one bot cycle
         run: python btc_bot.py --once   # no --telegram: only the daily report notifies
 
+      - name: Send daily report if due (reliable catch-all — bot runs more often)
+        run: python btc_bot.py --report-if-due
+
       - name: Persist virtual account state
         run: |
           git config user.name "crypto-paper-bot"
