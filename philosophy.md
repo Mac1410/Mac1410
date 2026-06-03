@@ -17,12 +17,17 @@ sia in discesa (short). Orizzonte operativo: ore → giorni (swing), non scalpin
   non tanti mediocri.
 
 ## Analisi multi-timeframe (pesata per orizzonte)
-Ogni asset si analizza su **più finestre**: settimanale, giornaliera, oraria,
-minuti. Il **peso** di ciascuna dipende dall'**orizzonte previsto del trade**:
+Ogni asset si analizza su **più finestre**: mensile, settimanale, giornaliera,
+oraria, minuti. Il **peso** di ciascuna dipende dall'**orizzonte previsto del
+trade**:
 - Trade pensato su qualche ora (caso tipico col ciclo da 2h) → **peso maggiore a
-  ORARIA e GIORNALIERA**; **SETTIMANALE** come contesto/trend di fondo (peso
-  minore, per non remare contro la marea); **MINUTI** per affinare il timing
+  ORARIA e GIORNALIERA**; **SETTIMANALE e MENSILE** come contesto/trend di fondo
+  (peso minore, per non remare contro la marea); **MINUTI** per affinare il timing
   d'ingresso (peso minore).
+- **Mensile = marea di fondo:** serve a non confondere un calo settimanale con
+  un'inversione. Se il mensile è ancora rialzista, un ribasso settimanale può
+  essere solo rumore dentro un trend più grande (e viceversa). Pesa poco
+  sull'ingresso, ma è il filtro di contesto più ampio.
 - Per posizioni pensate più lunghe, sposta il peso verso giornaliera/settimanale;
   per ingressi più rapidi, dai più ascolto a oraria/minuti.
 - **Regole:** non operare contro il trend delle finestre a peso maggiore; usa la

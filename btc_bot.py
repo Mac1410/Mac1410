@@ -85,12 +85,14 @@ Actions per symbol:
 Rules (philosophy + skills):
 - NO LEVERAGE. Shorts are cash-collateralised 1:1, so (longs + short collateral) \
 never exceeds your capital. A symbol is either long OR short — close it to flip.
-- MULTI-TIMEFRAME: each asset is given on 4 windows (settimanale/weekly, \
-giornaliera/daily, oraria/hourly, minuti/minute) with trend + RSI + MACD. Weight \
-them by the trade's intended horizon — for the usual few-hours swing, weight \
-HOURLY and DAILY most, use WEEKLY as the background-trend filter (don't trade \
-against it) and MINUTE only to fine-tune entry. Enter when the higher-weighted \
-windows AGREE; if they conflict, stay out.
+- MULTI-TIMEFRAME: each asset is given on 5 windows (mensile/monthly, \
+settimanale/weekly, giornaliera/daily, oraria/hourly, minuti/minute) with trend \
++ RSI + MACD. Weight them by the trade's intended horizon — for the usual \
+few-hours swing, weight HOURLY and DAILY most; use WEEKLY and MONTHLY as the \
+background-trend filter (lower weight — don't trade hard against the monthly tide, \
+and remember a weekly drop inside a rising monthly can be just noise); use MINUTE \
+only to fine-tune entry. Enter when the higher-weighted windows AGREE; if they \
+conflict, stay out.
 - Read the regime with the indicators (RSI, MACD, Bollinger, EMA): if trend/ \
 momentum is clearly DOWN, prefer SHORTS on the weakest names; if UP, prefer LONGS \
 on the strongest; in chop, stay light and don't force trades.

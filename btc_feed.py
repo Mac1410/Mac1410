@@ -307,7 +307,7 @@ def format_universe(snaps: dict[str, dict[str, Any]]) -> str:
         mtf = s.get("mtf")
         if mtf:
             out.append("- Multi-timeframe (trend / RSI / MACD):")
-            for tf_name in ("settimanale", "giornaliera", "oraria", "minuti"):
+            for tf_name in ("mensile", "settimanale", "giornaliera", "oraria", "minuti"):
                 r = mtf.get(tf_name)
                 if r:
                     out.append(f"   · {tf_name}: {r['trend']} / RSI {r.get('rsi')} / MACD {r.get('macd')}")

@@ -127,16 +127,36 @@ def _multi_timeframe_closes(cg_id: str) -> dict[str, list[float]]:
     hourly = _market_chart_closes(cg_id, 14)     # hourly candles
     time.sleep(1.5)
     daily = _market_chart_closes(cg_id, 365)     # daily candles
-    weekly = daily[::7] if daily else []         # weekly ≈ every 7th daily
-    return {"settimanale": weekly, "giornaliera": daily, "oraria": hourly, "minuti": minute}
+    weekly = daily[::7] if daily else []         # weekly  ≈ every 7th daily
+    monthly = daily[::30] if daily else []       # monthly ≈ every 30th daily (background trend)
+    return {"mensile": monthly, "settimanale": weekly, "giornaliera": daily,
+            "oraria": hourly, "minuti": minute}
 
 
 def _trend_read(closes: list[float]) -> dict[str, Any] | None:
-    """Compact trend read for one timeframe: direction + RSI + MACD sign."""
-    ind = compute_indicators(closes)
-    if not ind or not closes:
+    """Compact trend read for one timeframe: direction + RSI + MACD sign.
+    Full indicators when ≥30 points; a lightweight EMA+slope read for short
+    series (e.g. monthly, where only ~12 points are available on free data)."""
+    if not closes or len(closes) < 5:
         return None
-    price, ema, hist = closes[-1], ind.get("EMA50"), ind.get("MACD_hist", 0.0)
+    s = pd.Series(closes, dtype="float64")
+    price = closes[-1]
+
+    if len(closes) >= 30:
+        ind = compute_indicators(closes)
+        ema = ind.get("EMA50")
+        hist = ind.get("MACD_hist", 0.0)
+        rsi = ind.get("RSI")
+        macd_up = hist >= 0
+    else:
+        # Lightweight: short EMA + recent slope (enough to read the background trend).
+        span = max(3, min(8, len(closes) // 2))
+        ema = float(s.ewm(span=span, adjust=False).mean().iloc[-1])
+        ref = closes[max(0, len(closes) - 3)]
+        macd_up = price >= ref
+        hist = price - ref
+        rsi = None
+
     if ema is None:
         trend = "n/d"
     elif price > ema and hist > 0:
@@ -145,7 +165,7 @@ def _trend_read(closes: list[float]) -> dict[str, Any] | None:
         trend = "ribassista"
     else:
         trend = "laterale"
-    return {"trend": trend, "rsi": ind.get("RSI"), "macd": "+" if hist >= 0 else "-"}
+    return {"trend": trend, "rsi": rsi, "macd": "+" if macd_up else "-"}
 
 
 def multi_timeframe_reads(closes_by_tf: dict[str, list[float]]) -> dict[str, Any]:
