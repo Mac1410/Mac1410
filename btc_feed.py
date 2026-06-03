@@ -78,16 +78,19 @@ def _coingecko_multi(cg_ids: list[str]) -> dict[str, float]:
     ids = [c for c in cg_ids if c]
     if not ids:
         return {}
-    try:
-        r = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": ",".join(sorted(set(ids))), "vs_currencies": "eur"},
-            timeout=10,
-        )
-        r.raise_for_status()
-        return {cid: float(v["eur"]) for cid, v in r.json().items() if "eur" in v}
-    except Exception:
-        return {}
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                "https://api.coingecko.com/api/v3/simple/price",
+                params={"ids": ",".join(sorted(set(ids))), "vs_currencies": "eur"},
+                timeout=12,
+            )
+            r.raise_for_status()
+            return {cid: float(v["eur"]) for cid, v in r.json().items() if "eur" in v}
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))  # 2s, 4s backoff
+    return {}
 
 
 def ensure_indicators() -> None:

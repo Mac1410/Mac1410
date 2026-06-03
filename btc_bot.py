@@ -327,6 +327,12 @@ def morning_report(*, notify_telegram: bool = True) -> dict[str, Any]:
     paper_broker.init_paper()
     snaps = btc_feed.get_universe_snapshot()
     prices = btc_feed.prices_from_snapshots(snaps)
+
+    # Don't send a dataless report (and don't consume the daily guard) — let the
+    # next cycle retry once market data is reachable again.
+    if not prices:
+        return {"ok": False, "reason": "no market data — report skipped, will retry next cycle"}
+
     state = paper_broker.get_state(prices)
     commentary = _report_commentary(btc_feed.format_universe(snaps),
                                     paper_broker.format_state(state))
@@ -371,7 +377,7 @@ def main() -> None:
 
     if args.report:
         out = morning_report(notify_telegram=True)
-        print(out["text"])
+        print(out.get("text") or out.get("reason", "report skipped"))
         return
 
     if args.report_if_due:
@@ -379,8 +385,11 @@ def main() -> None:
         today = rome.strftime("%Y-%m-%d")
         last = paper_broker.get_meta("last_report_date")
         if rome.hour >= 10 and last != today:
-            morning_report(notify_telegram=True)
-            print(f"Report inviato (ora Roma {rome.hour}:00, data {today}).")
+            out = morning_report(notify_telegram=True)
+            if out.get("ok"):
+                print(f"Report inviato (ora Roma {rome.hour}:00, data {today}).")
+            else:
+                print(f"Report NON inviato: {out.get('reason')}")
         else:
             print(f"Report non dovuto (ora Roma={rome.hour}, ultimo inviato={last}).")
         return

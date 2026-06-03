@@ -10,6 +10,7 @@ local GUI — e.g. a cloud server that stays on while your PC is off.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pandas as pd
@@ -20,16 +21,19 @@ OHLC_URL = "https://api.coingecko.com/api/v3/coins/{id}/ohlc"
 
 def get_closes_eur(cg_id: str, days: int = 30) -> list[float]:
     """Closing prices (EUR) from CoinGecko OHLC candles. Newest last."""
-    try:
-        r = requests.get(
-            OHLC_URL.format(id=cg_id),
-            params={"vs_currency": "eur", "days": days},
-            timeout=15,
-        )
-        r.raise_for_status()
-        return [float(c[4]) for c in r.json()]
-    except Exception:
-        return []
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                OHLC_URL.format(id=cg_id),
+                params={"vs_currency": "eur", "days": days},
+                timeout=15,
+            )
+            r.raise_for_status()
+            return [float(c[4]) for c in r.json()]
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+    return []
 
 
 def compute_indicators(closes: list[float]) -> dict[str, Any]:
