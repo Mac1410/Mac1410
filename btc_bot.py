@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from typing import Any
 
@@ -34,7 +35,7 @@ from telegram_alert import send_telegram
 MODEL = "claude-opus-4-8"
 MAX_POSITIONS = 4               # focused book — "not too many"
 MAX_POSITION_PCT = 60.0         # cap any single position at 60% of equity
-FULLY_INVESTED = True           # deploy ~all cash; don't sit on idle liquidity
+FULLY_INVESTED = False          # may invest up to 100%, but NOT forced — cash is allowed
 MIN_CASH_SWEEP = 5.0            # below this, leftover cash is left alone
 
 _client: anthropic.Anthropic | None = None
@@ -89,10 +90,22 @@ momentum is clearly DOWN, prefer SHORTS on the weakest names; if UP, prefer LONG
 on the strongest; in chop, stay light and don't force trades.
 - Hold 2–{MAX_POSITIONS} positions at a time, never more. Conviction over breadth. \
 Deploy meaningfully — don't sit on large idle cash when there are clear setups.
-- EVERY new position needs a ≤2-sentence thesis AND a pre-committed stop_loss:
-  · LONG  → stop_loss BELOW entry, take_profit ABOVE.
-  · SHORT → stop_loss ABOVE entry, take_profit BELOW.
-- Exit on thesis break, not noise. Rotate from weak into strong ideas.
+- EVERY new position needs a ≤2-sentence thesis AND BOTH a pre-committed
+  stop_loss AND take_profit (NEVER null). Place them at TECHNICAL LEVELS read
+  from the data — the recent high/low of the window, the Bollinger bands, nearby
+  support/resistance — NOT at a fixed percentage. The distance follows the chart
+  structure/volatility, not a preset risk number:
+  · LONG  → stop_loss just below the recent low / lower Bollinger band;
+    take_profit at the recent high / upper band / next resistance.
+  · SHORT → stop_loss just above the recent high / upper band;
+    take_profit at the recent low / lower band / next support.
+  Prefer setups where these chart levels give a favourable reward:risk (target
+  roughly ≥ 2× the stop distance); if the structure offers poor R:R, stay out.
+- When a stop OR a target is hit, the position auto-closes; the next cycle
+  re-decides from scratch (re-enter same direction, flip, or stay out). Take the
+  profit at the target — do NOT "let it run".
+- Exit early on thesis/trend break (MACD cross or EMA50 reclaim against you),
+  even before the target. Never widen a stop to give a loser "another chance".
 
 Return a set of orders. Respond strictly in the required JSON schema."""
 
@@ -346,6 +359,8 @@ def morning_report(*, notify_telegram: bool = True) -> dict[str, Any]:
         lines.append(f"• {p['label']}: €{p['value']:,.0f} ({pnl})")
     if commentary:
         lines += ["", commentary]
+    dash = os.environ.get("DASHBOARD_URL", "http://localhost:8501")
+    lines += ["", f"📊 Dashboard: {dash}"]
     text = "\n".join(lines)
 
     if notify_telegram:
