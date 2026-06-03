@@ -49,11 +49,17 @@ jobs:
         run: |
           git config user.name "crypto-paper-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add advisor.db
-          if git diff --staged --quiet; then
-            echo "No state change to commit."
-          else
-            git commit -m "report: state $(date -u +%FT%TZ) [skip ci]"
-            git pull --rebase origin main || true
-            git push
-          fi
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin main
+            git reset -q --soft origin/main
+            git add advisor.db
+            if git diff --staged --quiet; then
+              echo "No state change to commit."; exit 0
+            fi
+            git commit -q -m "report: state $(date -u +%FT%TZ) [skip ci]"
+            if git push -q origin HEAD:main; then
+              echo "state pushed"; exit 0
+            fi
+            echo "push race — retry $attempt"; sleep 3
+          done
+          echo "could not push state after retries (non-fatal)"; exit 0
