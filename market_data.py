@@ -10,11 +10,18 @@ local GUI — e.g. a cloud server that stays on while your PC is off.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
 import pandas as pd
 import requests
+
+
+def _cg_headers() -> dict[str, str]:
+    """Optional CoinGecko demo API key → much higher, stable rate limits."""
+    key = os.environ.get("COINGECKO_API_KEY")
+    return {"x-cg-demo-api-key": key} if key else {}
 
 OHLC_URL = "https://api.coingecko.com/api/v3/coins/{id}/ohlc"
 MARKET_CHART_URL = "https://api.coingecko.com/api/v3/coins/{id}/market_chart"
@@ -27,6 +34,7 @@ def get_closes_eur(cg_id: str, days: int = 30) -> list[float]:
             r = requests.get(
                 OHLC_URL.format(id=cg_id),
                 params={"vs_currency": "eur", "days": days},
+                headers=_cg_headers(),
                 timeout=15,
             )
             r.raise_for_status()
@@ -101,6 +109,7 @@ def _market_chart_closes(cg_id: str, days: int) -> list[float]:
             r = requests.get(
                 MARKET_CHART_URL.format(id=cg_id),
                 params={"vs_currency": "eur", "days": days},
+                headers=_cg_headers(),
                 timeout=15,
             )
             r.raise_for_status()

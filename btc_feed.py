@@ -70,6 +70,11 @@ def _run_cli(args: list[str], timeout: int = 30) -> tuple[int, dict[str, Any]]:
     return proc.returncode, data
 
 
+def _cg_headers() -> dict[str, str]:
+    key = os.environ.get("COINGECKO_API_KEY")
+    return {"x-cg-demo-api-key": key} if key else {}
+
+
 def _coingecko_btc_eur() -> float | None:
     return _coingecko_multi(["bitcoin"]).get("bitcoin")
 
@@ -83,6 +88,7 @@ def _coingecko_multi(cg_ids: list[str]) -> dict[str, float]:
             r = requests.get(
                 "https://api.coingecko.com/api/v3/simple/price",
                 params={"ids": ",".join(sorted(set(ids))), "vs_currencies": "eur"},
+                headers=_cg_headers(),
                 timeout=12,
             )
             r.raise_for_status()
@@ -254,6 +260,7 @@ def get_universe_snapshot(universe: list[dict[str, str]] | None = None) -> dict[
                 break
             snap["mtf"] = market_data.multi_timeframe(entry["cg"])  # multi-timeframe from CoinGecko history
             snaps[entry["tv"]] = snap
+            time.sleep(1.0)  # throttle CoinGecko (multi-timeframe is call-heavy)
         if tv_ok and snaps:
             return snaps
 
@@ -264,6 +271,7 @@ def get_universe_snapshot(universe: list[dict[str, str]] | None = None) -> dict[
         px = prices.get(e["cg"])
         if px:
             snaps[e["tv"]] = market_data.build_snapshot(e, px)
+            time.sleep(1.0)  # throttle CoinGecko (multi-timeframe is call-heavy)
     return snaps
 
 
