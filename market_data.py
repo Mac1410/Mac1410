@@ -17,6 +17,7 @@ import pandas as pd
 import requests
 
 OHLC_URL = "https://api.coingecko.com/api/v3/coins/{id}/ohlc"
+MARKET_CHART_URL = "https://api.coingecko.com/api/v3/coins/{id}/market_chart"
 
 
 def get_closes_eur(cg_id: str, days: int = 30) -> list[float]:
@@ -92,31 +93,83 @@ def _indicator_studies(ind: dict[str, Any]) -> list[dict[str, Any]]:
     return studies
 
 
+def _market_chart_closes(cg_id: str, days: int) -> list[float]:
+    """Close prices (EUR) from CoinGecko market_chart, granularity set by `days`.
+    days=1 → ~5-min, days=2-90 → hourly, days=90+ → daily."""
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                MARKET_CHART_URL.format(id=cg_id),
+                params={"vs_currency": "eur", "days": days},
+                timeout=15,
+            )
+            r.raise_for_status()
+            return [float(p[1]) for p in r.json().get("prices", [])]
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+    return []
+
+
+def _multi_timeframe_closes(cg_id: str) -> dict[str, list[float]]:
+    """Close series at several horizons. Throttled to respect CoinGecko limits."""
+    minute = _market_chart_closes(cg_id, 1)      # ~5-min candles
+    time.sleep(1.5)
+    hourly = _market_chart_closes(cg_id, 14)     # hourly candles
+    time.sleep(1.5)
+    daily = _market_chart_closes(cg_id, 365)     # daily candles
+    weekly = daily[::7] if daily else []         # weekly ≈ every 7th daily
+    return {"settimanale": weekly, "giornaliera": daily, "oraria": hourly, "minuti": minute}
+
+
+def _trend_read(closes: list[float]) -> dict[str, Any] | None:
+    """Compact trend read for one timeframe: direction + RSI + MACD sign."""
+    ind = compute_indicators(closes)
+    if not ind or not closes:
+        return None
+    price, ema, hist = closes[-1], ind.get("EMA50"), ind.get("MACD_hist", 0.0)
+    if ema is None:
+        trend = "n/d"
+    elif price > ema and hist > 0:
+        trend = "rialzista"
+    elif price < ema and hist < 0:
+        trend = "ribassista"
+    else:
+        trend = "laterale"
+    return {"trend": trend, "rsi": ind.get("RSI"), "macd": "+" if hist >= 0 else "-"}
+
+
+def multi_timeframe_reads(closes_by_tf: dict[str, list[float]]) -> dict[str, Any]:
+    return {tf: _trend_read(c) for tf, c in closes_by_tf.items()}
+
+
+def multi_timeframe(cg_id: str) -> dict[str, Any]:
+    """Public: per-timeframe trend reads for one coin."""
+    return multi_timeframe_reads(_multi_timeframe_closes(cg_id))
+
+
 def build_snapshot(entry: dict[str, str], price: float) -> dict[str, Any]:
     """
-    Build a full snapshot (price + computed indicators + OHLCV-style summary)
-    for one universe entry using CoinGecko only.
+    Full snapshot for one universe entry (CoinGecko only): price, multi-timeframe
+    trend reads, plus base indicators + OHLCV-style summary derived from the
+    hourly series (the primary working timeframe).
     """
-    closes = get_closes_eur(entry["cg"], days=30)
-    ind = compute_indicators(closes)
+    tf_closes = _multi_timeframe_closes(entry["cg"])
+    mtf = multi_timeframe_reads(tf_closes)
+    base = tf_closes.get("oraria") or tf_closes.get("giornaliera") or []
+    ind = compute_indicators(base)
+
     ohlcv = None
-    if closes:
-        window = closes[-60:]
+    if base:
+        window = base[-60:]
         first, lastc = window[0], window[-1]
         ohlcv = {
-            "bar_count": len(window),
-            "open": first, "close": lastc,
-            "high": max(window), "low": min(window),
-            "range": max(window) - min(window),
+            "bar_count": len(window), "open": first, "close": lastc,
+            "high": max(window), "low": min(window), "range": max(window) - min(window),
             "change_pct": f"{(lastc - first) / first * 100:+.2f}%" if first else "—",
-            "avg_volume": "—",
-            "last_5_bars": [{"close": c} for c in window[-5:]],
+            "avg_volume": "—", "last_5_bars": [{"close": c} for c in window[-5:]],
         }
     return {
-        "source": "coingecko",
-        "symbol": entry["tv"],
-        "label": entry["label"],
-        "price": price,
-        "ohlcv": ohlcv,
-        "indicators": _indicator_studies(ind),
+        "source": "coingecko", "symbol": entry["tv"], "label": entry["label"],
+        "price": price, "ohlcv": ohlcv, "indicators": _indicator_studies(ind), "mtf": mtf,
     }

@@ -16,6 +16,20 @@ sia in discesa (short). Orizzonte operativo: ore → giorni (swing), non scalpin
   (istogramma MACD più ripido, variazione % più marcata). Pochi cavalli vincenti,
   non tanti mediocri.
 
+## Analisi multi-timeframe (pesata per orizzonte)
+Ogni asset si analizza su **più finestre**: settimanale, giornaliera, oraria,
+minuti. Il **peso** di ciascuna dipende dall'**orizzonte previsto del trade**:
+- Trade pensato su qualche ora (caso tipico col ciclo da 2h) → **peso maggiore a
+  ORARIA e GIORNALIERA**; **SETTIMANALE** come contesto/trend di fondo (peso
+  minore, per non remare contro la marea); **MINUTI** per affinare il timing
+  d'ingresso (peso minore).
+- Per posizioni pensate più lunghe, sposta il peso verso giornaliera/settimanale;
+  per ingressi più rapidi, dai più ascolto a oraria/minuti.
+- **Regole:** non operare contro il trend delle finestre a peso maggiore; usa la
+  settimanale come filtro di coerenza (preferisci trade allineati alla direzione
+  di fondo); entra quando oraria e giornaliera **concordano**. Se le finestre
+  principali sono in **disaccordo**, il setup è poco chiaro → meglio aspettare.
+
 ## Direzione
 - **Net LONG** quando il quadro è risk-on (più nomi in uptrend).
 - **Net SHORT** quando è risk-off (più nomi in downtrend). Non si resta long

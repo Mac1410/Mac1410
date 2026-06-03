@@ -252,6 +252,7 @@ def get_universe_snapshot(universe: list[dict[str, str]] | None = None) -> dict[
             if snap is None:
                 tv_ok = False
                 break
+            snap["mtf"] = market_data.multi_timeframe(entry["cg"])  # multi-timeframe from CoinGecko history
             snaps[entry["tv"]] = snap
         if tv_ok and snaps:
             return snaps
@@ -295,5 +296,12 @@ def format_universe(snaps: dict[str, dict[str, Any]]) -> str:
                 out.append(f"- {study.get('name')}: {vals}")
         if o:
             out.append(f"- range €{o.get('low', 0):,.0f}–€{o.get('high', 0):,.0f}, avg vol {o.get('avg_volume', '—')}")
+        mtf = s.get("mtf")
+        if mtf:
+            out.append("- Multi-timeframe (trend / RSI / MACD):")
+            for tf_name in ("settimanale", "giornaliera", "oraria", "minuti"):
+                r = mtf.get(tf_name)
+                if r:
+                    out.append(f"   · {tf_name}: {r['trend']} / RSI {r.get('rsi')} / MACD {r.get('macd')}")
         out.append("")
     return "\n".join(out)
