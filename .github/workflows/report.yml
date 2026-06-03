@@ -1,18 +1,18 @@
 name: morning-report
 
-# Daily morning report on the paper book → Telegram, at 10:00 Italy time.
+# Daily morning report on the paper book → Telegram, at 09:00 Italy time.
 #
 # GitHub's scheduled triggers are best-effort and are frequently delayed or
 # skipped. So instead of a single fixed time, we attempt several times through
 # the morning and use a once-per-day guard in the code (btc_bot.py
-# --report-if-due): it sends only on the first run where it's >= 10:00 in
+# --report-if-due): it sends only on the first run where it's >= 09:00 in
 # Europe/Rome and a report hasn't already been sent today. This survives skipped
 # triggers and handles CET/CEST automatically.
 
 on:
   schedule:
-    - cron: "0,30 7-9 * * *"   # 07:00–09:30 UTC every 30 min
-    - cron: "0 10 * * *"       # 10:00 UTC backstop
+    - cron: "0,30 6-9 * * *"   # 06:00–09:30 UTC → ~08:00–11:30 Rome (covers 09:00 in CET/CEST)
+    - cron: "0 10 * * *"       # backstop
   workflow_dispatch: {}        # manual run → always sends (forced)
 
 permissions:

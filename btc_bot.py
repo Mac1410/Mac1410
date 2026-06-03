@@ -417,7 +417,7 @@ def main() -> None:
         rome = _rome_now()
         today = rome.strftime("%Y-%m-%d")
         last = paper_broker.get_meta("last_report_date")
-        if rome.hour >= 10 and last != today:
+        if rome.hour >= 9 and last != today:
             out = morning_report(notify_telegram=True)
             if out.get("ok"):
                 print(f"Report inviato (ora Roma {rome.hour}:00, data {today}).")
