@@ -15,7 +15,7 @@ name: crypto-paper-bot
 
 on:
   schedule:
-    - cron: "0 */2 * * *"    # every 2 hours (UTC; GitHub may delay under load)
+    - cron: "0 * * * *"      # every hour (UTC; GitHub is best-effort and skips/delays some)
   workflow_dispatch: {}       # manual "Run workflow" button
 
 permissions:

@@ -20,7 +20,7 @@ sia in discesa (short). Orizzonte operativo: ore → giorni (swing), non scalpin
 Ogni asset si analizza su **più finestre**: mensile, settimanale, giornaliera,
 oraria, minuti. Il **peso** di ciascuna dipende dall'**orizzonte previsto del
 trade**:
-- Trade pensato su qualche ora (caso tipico col ciclo da 2h) → **peso maggiore a
+- Trade pensato su qualche ora (caso tipico col ciclo orario) → **peso maggiore a
   ORARIA e GIORNALIERA**; **SETTIMANALE e MENSILE** come contesto/trend di fondo
   (peso minore, per non remare contro la marea); **MINUTI** per affinare il timing
   d'ingresso (peso minore).
