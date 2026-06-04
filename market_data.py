@@ -220,8 +220,9 @@ def key_levels(closes: list[float], price: float | None, radius: int = 3) -> dic
 
 
 def _levels_by_tf(tf_closes: dict[str, list[float]], price: float | None) -> dict[str, Any]:
+    # Short-horizon focus: levels on minute (5-min) + hourly + daily context.
     return {tf: key_levels(tf_closes.get(tf, []), price)
-            for tf in ("settimanale", "giornaliera", "oraria")}
+            for tf in ("minuti", "oraria", "giornaliera")}
 
 
 def multi_timeframe(cg_id: str, price: float | None = None) -> dict[str, Any]:

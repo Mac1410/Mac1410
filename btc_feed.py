@@ -319,7 +319,7 @@ def format_universe(snaps: dict[str, dict[str, Any]]) -> str:
         lv = s.get("levels")
         if lv:
             rows = []
-            for tf_name in ("settimanale", "giornaliera", "oraria"):
+            for tf_name in ("minuti", "oraria", "giornaliera"):
                 k = lv.get(tf_name)
                 if k and (k.get("support") or k.get("resistance")):
                     rows.append(f"   · {tf_name}: supporto €{k.get('support')} / resistenza €{k.get('resistance')}")
