@@ -120,6 +120,25 @@ def _market_chart_closes(cg_id: str, days: int) -> list[float]:
     return []
 
 
+def recent_hilo(cg_id: str, days: int = 1) -> list[tuple[int, float, float]]:
+    """Recent (ts_ms, high, low) candles — to detect if a level was touched
+    BETWEEN cycles (CoinGecko OHLC: days=1 → ~30-min candles)."""
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                OHLC_URL.format(id=cg_id),
+                params={"vs_currency": "eur", "days": days},
+                headers=_cg_headers(),
+                timeout=15,
+            )
+            r.raise_for_status()
+            return [(int(c[0]), float(c[2]), float(c[3])) for c in r.json()]
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+    return []
+
+
 def _multi_timeframe_closes(cg_id: str) -> dict[str, list[float]]:
     """Close series at several horizons. Throttled to respect CoinGecko limits."""
     minute = _market_chart_closes(cg_id, 1)      # ~5-min candles

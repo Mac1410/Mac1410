@@ -331,6 +331,36 @@ def execute_order(
             "detail": detail, "qty": qty, "eur_amount": eur_amount}
 
 
+def intrabar_exit_decision(p: dict[str, Any], candles: list[tuple[int, float, float]]) -> dict[str, Any] | None:
+    """
+    Did the price touch this position's stop/target BETWEEN cycles? Scans the
+    (ts_ms, high, low) candles after the position's last update, in time order,
+    and returns the level to fill at (as a resting order would) — or None.
+    Stop has priority over target within the same candle (conservative).
+    """
+    stop, take, side = p.get("active_stop"), p.get("active_take"), p["side"]
+    if not (stop or take) or not candles:
+        return None
+    try:
+        last_ts = datetime.fromisoformat(p["updated_at"]).timestamp() * 1000
+    except Exception:
+        last_ts = 0
+    for ts, hi, lo in candles:
+        if ts <= last_ts:
+            continue
+        if side == "long":
+            if stop and lo <= stop:
+                return {"level": stop, "reason": f"STOP-LOSS {p['label']} (long) toccato a €{stop:,.2f} tra i cicli"}
+            if take and hi >= take:
+                return {"level": take, "reason": f"TAKE-PROFIT {p['label']} (long) toccato a €{take:,.2f} tra i cicli"}
+        else:  # short
+            if stop and hi >= stop:
+                return {"level": stop, "reason": f"STOP-LOSS {p['label']} (short) toccato a €{stop:,.2f} tra i cicli"}
+            if take and lo <= take:
+                return {"level": take, "reason": f"TAKE-PROFIT {p['label']} (short) toccato a €{take:,.2f} tra i cicli"}
+    return None
+
+
 def check_exits(prices: dict[str, float]) -> list[dict[str, Any]]:
     """Force-close positions whose live price breaches their stop / target."""
     results = []

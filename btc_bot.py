@@ -28,6 +28,7 @@ from typing import Any
 import anthropic
 
 import btc_feed
+import market_data
 import paper_broker
 import prompts
 from telegram_alert import send_telegram
@@ -259,7 +260,25 @@ def run_cycle(*, notify_telegram: bool = False) -> dict[str, Any]:
     if not prices:
         return {"ok": False, "detail": "No market data available — skipped (no trade)."}
 
-    auto_exits = paper_broker.check_exits(prices)
+    # Intrabar exits: did the price hit a stop/target BETWEEN cycles? If so,
+    # close at that exact level (as a resting order would), not at the lagging
+    # cycle-time price — so the discrete cadence doesn't distort the simulation.
+    auto_exits = []
+    tv_to_cg = {e["tv"]: e["cg"] for e in btc_feed.CRYPTO_UNIVERSE}
+    for p in paper_broker.get_positions():
+        cg = tv_to_cg.get(p["symbol"])
+        if not cg:
+            continue
+        dec = paper_broker.intrabar_exit_decision(p, market_data.recent_hilo(cg))
+        if dec:
+            action = "SELL" if p["side"] == "long" else "COVER"
+            res = paper_broker.execute_order(
+                symbol=p["symbol"], label=p["label"], action=action, size_pct=100.0,
+                price=dec["level"], confidence=1.0, thesis=dec["reason"], source="auto-exit")
+            res["exit_reason"] = dec["reason"]
+            auto_exits.append(res)
+    # Fallback: current-price check (covers anything intrabar data missed).
+    auto_exits += paper_broker.check_exits(prices)
     state_before = paper_broker.get_state(prices)
     decision = decide(snaps, state_before)
     results = _execute_orders(decision, prices, snaps)
