@@ -255,7 +255,8 @@ def _sweep_cash(prices: dict, snaps: dict) -> list[dict[str, Any]]:
     return results
 
 
-FLAT_ANALYSIS_MIN_MINUTES = 30  # when flat, run a (paid) Claude analysis at most this often
+FLAT_ANALYSIS_MIN_MINUTES = 30  # min minutes between non-exit (flat / free-capacity) analyses
+FREE_CAPACITY_MIN_CASH = 50.0   # only re-analyze idle cash if at least this much is free
 
 
 def _exit_checks() -> tuple[list[dict[str, Any]], dict[str, float]]:
@@ -313,8 +314,10 @@ def run_cycle(*, notify_telegram: bool = False) -> dict[str, Any]:
 def watch_cycle() -> dict[str, Any]:
     """
     Lightweight watch (every ~10 min). Enforces stops/targets WITHOUT Claude.
-    Triggers a full Claude analysis only (1) immediately on a position exit, or
-    (2) when flat, at most every FLAT_ANALYSIS_MIN_MINUTES.
+    Triggers a full Claude analysis when:
+      (1) a position exits → immediately, or
+      (2) flat, or (3) there's free capacity (idle cash + a free slot) →
+          throttled to at most every FLAT_ANALYSIS_MIN_MINUTES.
     """
     paper_broker.init_paper()
     auto_exits, prices = _exit_checks()
@@ -322,8 +325,8 @@ def watch_cycle() -> dict[str, Any]:
 
     trigger = None
     if auto_exits:
-        trigger = "exit"
-    elif state["n_positions"] == 0:
+        trigger = "exit"  # always immediate
+    else:
         last = paper_broker.get_meta("last_analysis_ts")
         due = True
         if last:
@@ -332,7 +335,11 @@ def watch_cycle() -> dict[str, Any]:
                       >= timedelta(minutes=FLAT_ANALYSIS_MIN_MINUTES)
             except Exception:
                 due = True
-        trigger = "flat" if due else None
+        if due:
+            if state["n_positions"] == 0:
+                trigger = "flat"
+            elif state["cash_eur"] >= FREE_CAPACITY_MIN_CASH and state["n_positions"] < MAX_POSITIONS:
+                trigger = "free-capacity"
 
     out = {"ok": True, "watch": True, "auto_exits": auto_exits,
            "trigger": trigger, "analysis": None, "state": state}
