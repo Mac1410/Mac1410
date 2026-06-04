@@ -4,7 +4,9 @@
 Crescita **aggressiva** del capitale cavalcando i trend nelle due direzioni.
 Obiettivo: **battere nettamente** il semplice hold di Bitcoin nel tempo,
 accettando volatilità e drawdown importanti. Si guadagna sia in salita (long)
-sia in discesa (short). Orizzonte operativo: ore → giorni (swing), non scalping.
+sia in discesa (short). **Orizzonte operativo: minuti → ore** (trade brevi): si
+apre con una previsione a minuti/ore e si imposta uno stop/take adeguato a quel
+respiro, non a giorni/settimane.
 
 ## Motore: trend-following con tilt di momentum
 - **La direzione del trend comanda. Si opera CON il trend, mai contro.**
@@ -20,19 +22,20 @@ sia in discesa (short). Orizzonte operativo: ore → giorni (swing), non scalpin
 Ogni asset si analizza su **più finestre**: mensile, settimanale, giornaliera,
 oraria, minuti. Il **peso** di ciascuna dipende dall'**orizzonte previsto del
 trade**:
-- Trade pensato su qualche ora (caso tipico col ciclo orario) → **peso maggiore a
-  ORARIA e GIORNALIERA**; **SETTIMANALE e MENSILE** come contesto/trend di fondo
-  (peso minore, per non remare contro la marea); **MINUTI** per affinare il timing
-  d'ingresso (peso minore).
+- Orizzonte minuti/ore (il nostro caso) → **peso maggiore a MINUTI e ORARIA**
+  (decidono ingresso, direzione e timing di breve); **GIORNALIERA** come contesto
+  ravvicinato; **SETTIMANALE e MENSILE** come marea di fondo (peso minore, per non
+  aprire contro la tendenza grande).
 - **Mensile = marea di fondo:** serve a non confondere un calo settimanale con
   un'inversione. Se il mensile è ancora rialzista, un ribasso settimanale può
   essere solo rumore dentro un trend più grande (e viceversa). Pesa poco
   sull'ingresso, ma è il filtro di contesto più ampio.
-- Per posizioni pensate più lunghe, sposta il peso verso giornaliera/settimanale;
-  per ingressi più rapidi, dai più ascolto a oraria/minuti.
-- **Regole:** non operare contro il trend delle finestre a peso maggiore; usa la
-  settimanale come filtro di coerenza (preferisci trade allineati alla direzione
-  di fondo); entra quando oraria e giornaliera **concordano**. Se le finestre
+- Lo stop e il take si leggono dalla struttura delle **finestre brevi**
+  (minuti/oraria): massimi/minimi recenti e bande di Bollinger di quei timeframe,
+  adeguati al respiro di poche ore — non stop larghi da swing di giorni.
+- **Regole:** non operare contro il trend delle finestre a peso maggiore; usa
+  settimanale/mensile come filtro di coerenza (non aprire contro la marea grande);
+  entra quando **minuti e oraria concordano**. Se le finestre
   principali sono in **disaccordo**, il setup è poco chiaro → meglio aspettare.
 
 ## Massimi e minimi locali (supporti/resistenze multi-timeframe)

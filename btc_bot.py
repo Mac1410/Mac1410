@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import anthropic
@@ -86,14 +87,16 @@ Actions per symbol:
 Rules (philosophy + skills):
 - NO LEVERAGE. Shorts are cash-collateralised 1:1, so (longs + short collateral) \
 never exceeds your capital. A symbol is either long OR short — close it to flip.
+- HORIZON: trades are SHORT — minutes to a few hours. Open with that outlook and \
+size stops/targets to that breath (read them from the short-timeframe structure: \
+recent minute/hourly highs-lows and Bollinger bands), NOT wide multi-day swing stops.
 - MULTI-TIMEFRAME: each asset is given on 5 windows (mensile/monthly, \
 settimanale/weekly, giornaliera/daily, oraria/hourly, minuti/minute) with trend \
-+ RSI + MACD. Weight them by the trade's intended horizon — for the usual \
-few-hours swing, weight HOURLY and DAILY most; use WEEKLY and MONTHLY as the \
-background-trend filter (lower weight — don't trade hard against the monthly tide, \
-and remember a weekly drop inside a rising monthly can be just noise); use MINUTE \
-only to fine-tune entry. Enter when the higher-weighted windows AGREE; if they \
-conflict, stay out.
++ RSI + MACD. For this minutes/hours horizon, weight MINUTE and HOURLY most \
+(entry, direction, timing); use DAILY as near context; use WEEKLY and MONTHLY as \
+the background tide (lower weight — don't open against the big trend; a weekly dip \
+inside a rising monthly can be noise). Enter when MINUTE and HOURLY agree; if the \
+higher-weighted windows conflict, stay out.
 - LOCAL HIGHS/LOWS: each asset also lists recent local highs/lows per timeframe \
 (support below the price / resistance above). Use them to ANTICIPATE BOUNCES — \
 near strong multi-timeframe SUPPORT a rebound is more likely (favour long / cover \
@@ -252,18 +255,13 @@ def _sweep_cash(prices: dict, snaps: dict) -> list[dict[str, Any]]:
     return results
 
 
-def run_cycle(*, notify_telegram: bool = False) -> dict[str, Any]:
-    paper_broker.init_paper()
-    snaps = btc_feed.get_universe_snapshot()
-    prices = btc_feed.prices_from_snapshots(snaps)
+FLAT_ANALYSIS_MIN_MINUTES = 30  # when flat, run a (paid) Claude analysis at most this often
 
-    if not prices:
-        return {"ok": False, "detail": "No market data available — skipped (no trade)."}
 
-    # Intrabar exits: did the price hit a stop/target BETWEEN cycles? If so,
-    # close at that exact level (as a resting order would), not at the lagging
-    # cycle-time price — so the discrete cadence doesn't distort the simulation.
-    auto_exits = []
+def _exit_checks() -> tuple[list[dict[str, Any]], dict[str, float]]:
+    """Enforce stops/targets — intrabar (level fill) + current price. NO Claude call."""
+    prices = btc_feed.live_prices()
+    exits: list[dict[str, Any]] = []
     tv_to_cg = {e["tv"]: e["cg"] for e in btc_feed.CRYPTO_UNIVERSE}
     for p in paper_broker.get_positions():
         cg = tv_to_cg.get(p["symbol"])
@@ -276,9 +274,18 @@ def run_cycle(*, notify_telegram: bool = False) -> dict[str, Any]:
                 symbol=p["symbol"], label=p["label"], action=action, size_pct=100.0,
                 price=dec["level"], confidence=1.0, thesis=dec["reason"], source="auto-exit")
             res["exit_reason"] = dec["reason"]
-            auto_exits.append(res)
-    # Fallback: current-price check (covers anything intrabar data missed).
-    auto_exits += paper_broker.check_exits(prices)
+            exits.append(res)
+    exits += paper_broker.check_exits(prices)
+    return exits, prices
+
+
+def analyze_and_trade(auto_exits: list | None = None) -> dict[str, Any]:
+    """Full Claude analysis + order execution. Records a snapshot + last_analysis_ts."""
+    snaps = btc_feed.get_universe_snapshot()
+    prices = btc_feed.prices_from_snapshots(snaps)
+    if not prices:
+        return {"ok": False, "detail": "No market data available — skipped (no trade)."}
+
     state_before = paper_broker.get_state(prices)
     decision = decide(snaps, state_before)
     results = _execute_orders(decision, prices, snaps)
@@ -286,15 +293,53 @@ def run_cycle(*, notify_telegram: bool = False) -> dict[str, Any]:
         results += _sweep_cash(prices, snaps)
     state = paper_broker.get_state(prices)
 
-    # Record the value-vs-BTC time series (anchors the buy-&-hold benchmark).
     paper_broker.record_snapshot(state["value"], prices.get("BINANCE:BTCEUR"))
+    paper_broker.set_meta("last_analysis_ts", datetime.now(timezone.utc).isoformat())
 
-    out = {
-        "ok": True, "snaps": snaps, "prices": prices, "auto_exits": auto_exits,
-        "decision": decision, "results": results, "state": state,
-    }
-    if notify_telegram:
+    return {"ok": True, "snaps": snaps, "prices": prices, "auto_exits": auto_exits or [],
+            "decision": decision, "results": results, "state": state}
+
+
+def run_cycle(*, notify_telegram: bool = False) -> dict[str, Any]:
+    """One full cycle: enforce exits, then a complete Claude analysis (used by --once)."""
+    paper_broker.init_paper()
+    auto_exits, _ = _exit_checks()
+    out = analyze_and_trade(auto_exits)
+    if notify_telegram and out.get("ok"):
         send_telegram(_telegram_text(out))
+    return out
+
+
+def watch_cycle() -> dict[str, Any]:
+    """
+    Lightweight watch (every ~10 min). Enforces stops/targets WITHOUT Claude.
+    Triggers a full Claude analysis only (1) immediately on a position exit, or
+    (2) when flat, at most every FLAT_ANALYSIS_MIN_MINUTES.
+    """
+    paper_broker.init_paper()
+    auto_exits, prices = _exit_checks()
+    state = paper_broker.get_state(prices)
+
+    trigger = None
+    if auto_exits:
+        trigger = "exit"
+    elif state["n_positions"] == 0:
+        last = paper_broker.get_meta("last_analysis_ts")
+        due = True
+        if last:
+            try:
+                due = (datetime.now(timezone.utc) - datetime.fromisoformat(last)) \
+                      >= timedelta(minutes=FLAT_ANALYSIS_MIN_MINUTES)
+            except Exception:
+                due = True
+        trigger = "flat" if due else None
+
+    out = {"ok": True, "watch": True, "auto_exits": auto_exits,
+           "trigger": trigger, "analysis": None, "state": state}
+    if trigger:
+        out["analysis"] = analyze_and_trade(auto_exits)
+        if out["analysis"].get("ok"):
+            out["state"] = out["analysis"]["state"]
     return out
 
 
@@ -331,6 +376,24 @@ def _print_cycle(out: dict[str, Any]) -> None:
     for p in s["positions"]:
         pnl = f"{p['pnl_pct']:+.1f}%" if p["pnl_pct"] is not None else "—"
         print(f"    {p['label']}: €{p['value']:,.2f} ({pnl})")
+
+
+def _print_watch(out: dict[str, Any]) -> None:
+    for ex in out.get("auto_exits", []):
+        print(f"AUTO-EXIT: {ex.get('detail', '')}")
+    trig = out.get("trigger")
+    if trig:
+        print(f"[trigger: {trig}] analisi eseguita.")
+        a = out.get("analysis") or {}
+        if a.get("ok"):
+            print(f"Rationale: {a['decision'].get('rationale', '')}")
+            for r in a.get("results", []):
+                print(("  [x] " if r.get("executed") else "  [ ] ") + r.get("detail", ""))
+    else:
+        print("Nessun trigger: solo sorveglianza stop/take (nessuna analisi, costo zero).")
+    s = out["state"]
+    print(f"Account: €{s['value']:,.2f}  P&L {s['pnl_pct']:+.2f}%  "
+          f"(cash €{s['cash_eur']:,.2f}, {s['n_positions']} posizioni)")
 
 
 REPORT_TASK = """\
@@ -418,7 +481,9 @@ def main() -> None:
     except Exception:
         pass
     ap = argparse.ArgumentParser(description="Multi-crypto paper-trading bot (virtual money).")
-    ap.add_argument("--once", action="store_true", help="Run a single cycle (default).")
+    ap.add_argument("--once", action="store_true", help="Run a single full cycle (analysis + trade).")
+    ap.add_argument("--watch", action="store_true",
+                    help="Lightweight watch: enforce stops/targets; analyze only on exit or (throttled) when flat.")
     ap.add_argument("--loop", type=int, metavar="SECONDS", help="Run every N seconds.")
     ap.add_argument("--telegram", action="store_true", help="Push each result to Telegram.")
     ap.add_argument("--reset", action="store_true", help="Reset the virtual account to €1000 and exit.")
@@ -449,6 +514,10 @@ def main() -> None:
                 print(f"Report NON inviato: {out.get('reason')}")
         else:
             print(f"Report non dovuto (ora Roma={rome.hour}, ultimo inviato={last}).")
+        return
+
+    if args.watch:
+        _print_watch(watch_cycle())
         return
 
     if args.loop:

@@ -15,7 +15,7 @@ name: crypto-paper-bot
 
 on:
   schedule:
-    - cron: "0 * * * *"      # every hour (UTC; GitHub is best-effort and skips/delays some)
+    - cron: "*/10 * * * *"   # every 10 min — lightweight watch (free on a public repo)
   workflow_dispatch: {}       # manual "Run workflow" button
 
 permissions:
@@ -44,10 +44,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-bot.txt
 
-      - name: Run one bot cycle
-        run: python btc_bot.py --once   # no --telegram: only the daily report notifies
+      - name: Watch (enforce stops/targets; analyze only on exit or throttled-when-flat)
+        run: python btc_bot.py --watch
 
-      - name: Send daily report if due (reliable catch-all — bot runs more often)
+      - name: Send daily report if due
         run: python btc_bot.py --report-if-due
 
       - name: Persist virtual account state
