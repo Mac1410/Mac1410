@@ -152,7 +152,7 @@ def decide(snaps: dict, state: dict) -> dict[str, Any]:
     )
     resp = _get_client().messages.create(
         model=MODEL,
-        max_tokens=8000,
+        max_tokens=16000,   # high ceiling so the decision JSON is never truncated
         thinking={"type": "adaptive"},
         output_config={"effort": "high", "format": {"type": "json_schema", "schema": DECISION_SCHEMA}},
         system=[
