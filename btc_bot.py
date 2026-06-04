@@ -35,7 +35,7 @@ import prompts
 from telegram_alert import send_telegram
 
 MODEL = "claude-sonnet-4-6"
-MAX_POSITIONS = 4               # scan many, act on few — selective
+MAX_POSITIONS = 3               # scan many, act on few — selective
 MAX_POSITION_PCT = 60.0         # cap any single position at 60% of equity
 FULLY_INVESTED = False          # may invest up to 100%, but NOT forced — cash is allowed
 MIN_CASH_SWEEP = 5.0            # below this, leftover cash is left alone

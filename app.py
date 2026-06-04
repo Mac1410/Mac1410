@@ -214,9 +214,9 @@ with tab_book:
 with tab_bot:
     st.subheader("Crypto paper-trading bot")
     st.caption(
-        "Virtual money only (€1000 start). Actively trades a focused universe "
-        "(BTC, ETH, SOL, XRP, ADA) on your live TradingView charts — max 4 "
-        "positions, auto stop-loss / take-profit. It never sends real orders."
+        "Virtual money only (€1000 start). Scans a focused universe "
+        "(BTC, ETH, SOL, XRP, ADA, BNB, DOGE, AVAX) — opens at most 3 positions "
+        "(minutes/hours horizon), auto stop-loss / take-profit. Never sends real orders."
     )
 
     paper_broker.init_paper()
