@@ -44,8 +44,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-bot.txt
 
-      - name: Watch (enforce stops/targets; analyze only on exit or throttled-when-flat)
-        run: python btc_bot.py --watch
+      - name: Watch on schedule; full analysis on a manual run
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python btc_bot.py --once
+          else
+            python btc_bot.py --watch
+          fi
 
       - name: Send daily report if due
         run: python btc_bot.py --report-if-due
