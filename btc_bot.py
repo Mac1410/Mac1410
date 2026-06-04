@@ -152,7 +152,7 @@ def decide(snaps: dict, state: dict) -> dict[str, Any]:
     )
     resp = _get_client().messages.create(
         model=MODEL,
-        max_tokens=3500,
+        max_tokens=8000,
         thinking={"type": "adaptive"},
         output_config={"effort": "high", "format": {"type": "json_schema", "schema": DECISION_SCHEMA}},
         system=[
@@ -162,7 +162,12 @@ def decide(snaps: dict, state: dict) -> dict[str, Any]:
         messages=[{"role": "user", "content": DECISION_TASK}],
     )
     text = next((b.text for b in resp.content if b.type == "text"), "{}")
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Truncated / malformed output → do nothing this cycle instead of crashing.
+        return {"rationale": "Output del modello non valido o troncato — nessuna azione questo ciclo.",
+                "orders": []}
 
 
 def _execute_orders(decision: dict, prices: dict, snaps: dict) -> list[dict[str, Any]]:
