@@ -362,27 +362,31 @@ def intrabar_exit_decision(p: dict[str, Any], candles: list[tuple[int, float, fl
 
 
 def check_exits(prices: dict[str, float]) -> list[dict[str, Any]]:
-    """Force-close positions whose live price breaches their stop / target."""
+    """
+    Force-close positions whose live price breaches their stop / target.
+    Fills at the LEVEL (stop/take), not the current price — like a resting order —
+    so take-profits are capped at the level and never over-counted.
+    """
     results = []
     for p in get_positions():
         price = prices.get(p["symbol"], p.get("last_price"))
         if not price:
             continue
         stop, take = p.get("active_stop"), p.get("active_take")
-        reason = close_action = None
+        reason = close_action = fill = None
         if p["side"] == "long":
             if stop and price <= stop:
-                reason, close_action = f"STOP-LOSS {p['label']} (long) — €{price:,.2f} ≤ €{stop:,.2f}", "SELL"
+                reason, close_action, fill = f"STOP-LOSS {p['label']} (long) @ €{stop:,.2f}", "SELL", stop
             elif take and price >= take:
-                reason, close_action = f"TAKE-PROFIT {p['label']} (long) — €{price:,.2f} ≥ €{take:,.2f}", "SELL"
+                reason, close_action, fill = f"TAKE-PROFIT {p['label']} (long) @ €{take:,.2f}", "SELL", take
         else:  # short
             if stop and price >= stop:
-                reason, close_action = f"STOP-LOSS {p['label']} (short) — €{price:,.2f} ≥ €{stop:,.2f}", "COVER"
+                reason, close_action, fill = f"STOP-LOSS {p['label']} (short) @ €{stop:,.2f}", "COVER", stop
             elif take and price <= take:
-                reason, close_action = f"TAKE-PROFIT {p['label']} (short) — €{price:,.2f} ≤ €{take:,.2f}", "COVER"
+                reason, close_action, fill = f"TAKE-PROFIT {p['label']} (short) @ €{take:,.2f}", "COVER", take
         if reason:
             res = execute_order(symbol=p["symbol"], label=p.get("label"), action=close_action,
-                                size_pct=100.0, price=price, confidence=1.0, thesis=reason, source="auto-exit")
+                                size_pct=100.0, price=fill, confidence=1.0, thesis=reason, source="auto-exit")
             res["exit_reason"] = reason
             results.append(res)
     return results
