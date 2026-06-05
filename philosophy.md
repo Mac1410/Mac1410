@@ -22,10 +22,16 @@ respiro, non a giorni/settimane.
 Ogni asset si analizza su **più finestre**: mensile, settimanale, giornaliera,
 oraria, minuti. Il **peso** di ciascuna dipende dall'**orizzonte previsto del
 trade**:
-- Orizzonte minuti/ore (il nostro caso) → **peso maggiore a MINUTI e ORARIA**
-  (decidono ingresso, direzione e timing di breve); **GIORNALIERA** come contesto
-  ravvicinato; **SETTIMANALE e MENSILE** come marea di fondo (peso minore, per non
-  aprire contro la tendenza grande).
+- **DIREZIONE vs TIMING (regola chiave):** la **DIREZIONE** del trade (long o
+  short) la fissano le **finestre alte** — la **GIORNALIERA** in primis, con
+  **SETTIMANALE/MENSILE** come marea di fondo — confermata dall'**ORARIA**. I
+  **MINUTI** servono SOLO a **temporizzare l'ingresso** nella direzione decisa,
+  **NON a ribaltarla**.
+- Conseguenza diretta: **daily in downtrend → si può SOLO shortare o stare cash**.
+  Un rimbalzo dei minuti (MACD minuti che gira su) in quel contesto è l'occasione
+  per **entrare SHORT sulla forza**, **non** per comprare. **Daily in uptrend →
+  si può SOLO andare long**, usando un ritracciamento dei minuti per l'ingresso.
+  L'orizzonte di *tenuta* resta minuti/ore.
 - **Mensile = marea di fondo:** serve a non confondere un calo settimanale con
   un'inversione. Se il mensile è ancora rialzista, un ribasso settimanale può
   essere solo rumore dentro un trend più grande (e viceversa). Pesa poco

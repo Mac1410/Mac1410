@@ -90,13 +90,14 @@ never exceeds your capital. A symbol is either long OR short — close it to fli
 - HORIZON: trades are SHORT — minutes to a few hours. Open with that outlook and \
 size stops/targets to that breath (read them from the short-timeframe structure: \
 recent minute/hourly highs-lows and Bollinger bands), NOT wide multi-day swing stops.
-- MULTI-TIMEFRAME: each asset is given on 5 windows (mensile/monthly, \
-settimanale/weekly, giornaliera/daily, oraria/hourly, minuti/minute) with trend \
-+ RSI + MACD. For this minutes/hours horizon, weight MINUTE and HOURLY most \
-(entry, direction, timing); use DAILY as near context; use WEEKLY and MONTHLY as \
-the background tide (lower weight — don't open against the big trend; a weekly dip \
-inside a rising monthly can be noise). Enter when MINUTE and HOURLY agree; if the \
-higher-weighted windows conflict, stay out.
+- DIRECTION vs TIMING (key rule): the DAILY window (with WEEKLY/MONTHLY as the \
+background tide) sets the ALLOWED DIRECTION; HOURLY confirms it. MINUTE and HOURLY \
+are used to TIME the entry and read momentum WITHIN that direction — NEVER to flip \
+you counter-trend. A minute MACD turning positive inside a DAILY DOWNTREND is a \
+chance to SHORT into strength, NOT a reason to go long. So: daily downtrend → only \
+SHORT or cash (time the short on a minute up-tick toward resistance); daily uptrend \
+→ only LONG (time on a minute dip). The hold horizon stays minutes/hours. If the \
+daily is flat/choppy with no clear bias, stay out.
 - LOCAL HIGHS/LOWS: each asset also lists recent local highs/lows per timeframe \
 (support below the price / resistance above). Use them to ANTICIPATE BOUNCES — \
 near strong multi-timeframe SUPPORT a rebound is more likely (favour long / cover \
