@@ -104,9 +104,13 @@ shorts / take profit on shorts); near strong RESISTANCE a rejection is more like
 (favour short / take profit on longs). Levels confirmed across timeframes matter \
 more. Put stops just beyond these levels and targets at the next opposite level. \
 Act on confirmation (price holds the level + momentum turns), not blindly.
-- Read the regime with the indicators (RSI, MACD, Bollinger, EMA): if trend/ \
-momentum is clearly DOWN, prefer SHORTS on the weakest names; if UP, prefer LONGS \
-on the strongest; in chop, stay light and don't force trades.
+- TRADE WITH THE DOMINANT TREND, never against it. In a confirmed DOWNTREND the \
+bias is SHORT or cash — do NOT buy oversold dips (counter-trend longs keep getting \
+stopped out). SHORT the weakest names EVEN WHEN RSI IS LOW, as long as momentum \
+stays negative (a low RSI alone is NOT a reason to skip a short in a falling \
+market). Only skip a short at CONFIRMED EXHAUSTION: extreme RSI (≲10) AND a \
+reversal actually underway (minute MACD turning positive / bullish divergence). \
+In a confirmed UPTREND prefer LONGS on the strongest; in chop, stay light.
 - SCAN THE WHOLE universe, but OPEN only the few (0–{MAX_POSITIONS}) \
 highest-probability setups — never more than {MAX_POSITIONS} positions at a time. \
 It is perfectly fine to open ZERO and stay 100% in cash if nothing clearly \

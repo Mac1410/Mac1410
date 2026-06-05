@@ -62,13 +62,21 @@ che potrebbe essere bucato.
   laterali: non forzare operazioni nel rumore.
 
 ## Entrate
-- **LONG:** trend su confermato (sopra EMA50 + MACD positivo/in miglioramento).
-  Preferire trend giovani o in accelerazione, non movimenti già esausti
-  (evitare ingressi con RSI già estremo > 75).
-- **SHORT:** trend giù confermato (sotto EMA50 + MACD negativo/in peggioramento).
-  **Evitare di shortare in piena capitolazione** (RSI < 20 con candele di
-  esaurimento): rischio di rimbalzo violento. Si shorta la debolezza "ordinata",
-  non il panico finale.
+- **Opera SEMPRE nel verso del trend dominante (finestre a peso maggiore).** In un
+  **downtrend confermato** il bias è **SHORT o cash**: **NON si comprano i ribassi**
+  (i long contro-trend finiscono quasi sempre a stop). In un **uptrend confermato**,
+  niente short contro-trend.
+- **LONG:** solo in **uptrend confermato** (sopra EMA50 + MACD positivo/in
+  miglioramento su minuti+oraria). Preferire trend giovani/in accelerazione, non
+  movimenti già esausti (no ingressi con RSI già estremo > 80).
+- **SHORT:** in **downtrend confermato** (sotto EMA50 + MACD negativo su
+  minuti+oraria). **Si shorta anche quando l'RSI è basso**, finché il momentum
+  resta negativo: in un mercato che scende, lo short è la mossa corretta — un RSI
+  basso **da solo NON** è un motivo per non shortare un trend ancora in discesa.
+  **Unica eccezione:** evitare di aprire short solo all'**esaurimento confermato**
+  — RSI estremo (≲ 10) **insieme a** un segnale di inversione in atto (es. MACD dei
+  minuti che gira positivo, o divergenza rialzista). Capitolazione **senza** segnale
+  di inversione = si shorta comunque.
 
 ## Uscite: stop-loss E take-profit (entrambi OBBLIGATORI)
 Ogni posizione nasce **sempre** con DUE livelli pre-impostati all'ingresso. **I
