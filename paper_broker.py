@@ -23,6 +23,10 @@ from memory import DB_PATH
 
 START_BALANCE_EUR = 1000.0
 MIN_TRADE_EUR = 5.0
+# Auto-cap leverage so liquidation sits at least this multiple of the stop distance
+# beyond entry → the technical stop always fills before liquidation (no premature
+# margin wipeout). Higher = safer but lower effective leverage.
+LIQUIDATION_STOP_BUFFER = 1.5
 
 
 @contextmanager
@@ -108,6 +112,17 @@ def init_paper(start_balance: float = START_BALANCE_EUR) -> None:
                 (start_balance, start_balance, now, now),
             )
 
+        # One-time: leverage uses `collateral` as the locked MARGIN for longs too.
+        # Pre-leverage longs stored collateral=0 (margin == notional == avg_cost*qty);
+        # backfill so value/liquidation maths stay correct for legacy positions.
+        if conn.execute("SELECT value FROM bot_meta WHERE key = 'lev_margin_backfill'").fetchone() is None:
+            conn.execute(
+                "UPDATE paper_positions SET collateral = avg_cost * qty "
+                "WHERE side = 'long' AND (collateral IS NULL OR collateral = 0) "
+                "AND avg_cost IS NOT NULL AND qty > 0"
+            )
+            conn.execute("INSERT OR REPLACE INTO bot_meta (key, value) VALUES ('lev_margin_backfill', '1')")
+
 
 # ------------------------------------------------------------------- reads
 
@@ -130,22 +145,23 @@ def get_position(symbol: str) -> dict[str, Any] | None:
 
 
 def _position_value(p: dict[str, Any], price: float | None) -> tuple[float, float | None, float | None]:
-    """Return (value, pnl, pnl_pct) for a position at `price`."""
+    """
+    Return (value, pnl, pnl_pct) for a position at `price` — leverage-aware.
+    Margin (locked cash) is stored in `collateral` for BOTH sides; P&L accrues on
+    the full leveraged quantity. value = margin + pnl; pnl_pct is on the margin.
+    """
     px = price if price is not None else p.get("last_price")
     if not px:
         return 0.0, None, None
-    if p["side"] == "short":
-        pnl = (p["avg_cost"] - px) * p["qty"] if p.get("avg_cost") else None
-        coll = p.get("collateral") or 0.0
-        value = coll + (pnl or 0.0)
-        pnl_pct = (pnl / coll * 100) if (pnl is not None and coll) else None
-        return value, pnl, pnl_pct
-    value = px * p["qty"]
-    pnl = pnl_pct = None
-    if p.get("avg_cost"):
-        cost = p["avg_cost"] * p["qty"]
-        pnl = value - cost
-        pnl_pct = (pnl / cost * 100) if cost else None
+    margin = p.get("collateral") or 0.0
+    entry = p.get("avg_cost")
+    qty = p["qty"]
+    if entry:
+        pnl = (entry - px) * qty if p["side"] == "short" else (px - entry) * qty
+    else:
+        pnl = None
+    value = margin + (pnl or 0.0)
+    pnl_pct = (pnl / margin * 100) if (pnl is not None and margin) else None
     return value, pnl, pnl_pct
 
 
@@ -157,10 +173,12 @@ def get_state(prices: dict[str, float] | None = None) -> dict[str, Any]:
         px = prices.get(p["symbol"], p.get("last_price"))
         value, pnl, pnl_pct = _position_value(p, px)
         invested += value
+        margin = p.get("collateral") or 0.0
+        lev = (p["qty"] * p["avg_cost"] / margin) if (margin and p.get("avg_cost")) else 1.0
         positions.append({
             "symbol": p["symbol"], "label": p.get("label") or p["symbol"], "side": p["side"],
             "qty": p["qty"], "avg_cost": p.get("avg_cost"), "price": px, "value": value,
-            "pnl": pnl, "pnl_pct": pnl_pct, "collateral": p.get("collateral") or 0.0,
+            "pnl": pnl, "pnl_pct": pnl_pct, "collateral": margin, "leverage": lev,
             "active_stop": p.get("active_stop"), "active_take": p.get("active_take"),
         })
     value = acct["cash_eur"] + invested
@@ -212,19 +230,37 @@ def _record_trade(**kw: Any) -> None:
         )
 
 
+def _cap_leverage_to_stop(lev: float, entry: float, stop: float | None) -> float:
+    """
+    Lower leverage so liquidation sits at least LIQUIDATION_STOP_BUFFER × the stop
+    distance beyond entry — guarantees the chosen technical stop fills BEFORE
+    liquidation (no premature margin wipeout). The stop is left untouched; only the
+    leverage is reduced. Returns the (possibly reduced) leverage, never below 1.
+    """
+    if not stop or not entry or entry <= 0:
+        return lev
+    d_stop = abs(entry - stop) / entry
+    if d_stop <= 0:
+        return lev
+    lev_max = 1.0 / (LIQUIDATION_STOP_BUFFER * d_stop)
+    return max(1.0, min(lev, lev_max))
+
+
 def execute_order(
     *, symbol: str, action: str, size_pct: float, price: float, label: str | None = None,
     eur_cap: float | None = None, confidence: float | None = None, thesis: str | None = None,
     stop_loss: float | None = None, take_profit: float | None = None, source: str | None = None,
+    leverage: float = 1.0,
 ) -> dict[str, Any]:
     """
-    BUY   → open/add a LONG using size_pct% of free cash (optionally capped).
-    SELL  → reduce the LONG by size_pct% of its quantity.
-    SHORT → open/add a SHORT, locking size_pct% of free cash as collateral.
-    COVER → buy back size_pct% of the SHORT quantity (realises P&L).
+    BUY   → open/add a LONG; size_pct% of free cash is the MARGIN, exposure = margin × leverage.
+    SELL  → reduce the LONG by size_pct% of its quantity (releases margin + realises P&L).
+    SHORT → open/add a SHORT; size_pct% of free cash is the MARGIN, exposure = margin × leverage.
+    COVER → buy back size_pct% of the SHORT quantity (releases margin + realises P&L).
     """
     action = (action or "HOLD").upper()
     size_pct = max(0.0, min(100.0, float(size_pct or 0)))
+    lev = max(1.0, min(5.0, float(leverage or 1)))
     acct = get_account()
     cash = acct["cash_eur"]
     pos = get_position(symbol)
@@ -237,65 +273,84 @@ def execute_order(
             detail = f"BUY {label} ignorato — esiste una SHORT aperta (prima COVER)."
             action = "HOLD"
         else:
-            eur_amount = cash * size_pct / 100.0
+            margin = cash * size_pct / 100.0
             if eur_cap is not None:
-                eur_amount = min(eur_amount, eur_cap)
-            eur_amount = min(eur_amount, cash)
-            if eur_amount < MIN_TRADE_EUR:
-                detail, action = f"BUY {label} skipped — €{eur_amount:,.2f} sotto minimo.", "HOLD"
+                margin = min(margin, eur_cap)
+            margin = min(margin, cash)
+            if margin < MIN_TRADE_EUR:
+                detail, action = f"BUY {label} skipped — €{margin:,.2f} di margine sotto minimo.", "HOLD"
             else:
-                qty = eur_amount / price
+                eff_stop = stop_loss if stop_loss is not None else (pos.get("active_stop") if pos else None)
+                lev_use = _cap_leverage_to_stop(lev, price, eff_stop)
+                notional = margin * lev_use
+                qty = notional / price
                 held = pos["qty"] if pos else 0.0
                 new_qty = held + qty
                 avg = (held * pos["avg_cost"] + qty * price) / new_qty if (pos and pos.get("avg_cost")) else price
-                cash -= eur_amount
+                new_margin = (pos.get("collateral") or 0.0 if pos else 0.0) + margin
+                cash -= margin
                 _set_cash(cash)
-                _upsert_position(symbol, label, "long", new_qty, avg, 0.0,
+                _upsert_position(symbol, label, "long", new_qty, avg, new_margin,
                                  stop_loss or (pos.get("active_stop") if pos else None),
                                  take_profit or (pos.get("active_take") if pos else None), price)
                 executed = True
-                detail = f"BUY {label}: €{eur_amount:,.2f} → {qty:.6f} @ €{price:,.2f}."
+                eur_amount = margin
+                eff_lev = (new_qty * avg) / new_margin if new_margin else lev_use
+                detail = f"BUY {label}: margine €{margin:,.2f} × {eff_lev:.1f}x → {qty:.6f} @ €{price:,.2f}."
+                if eff_stop and lev_use < lev - 0.05:
+                    detail += f" [leva {lev:.1f}x→{lev_use:.1f}x per stop a €{eff_stop:,.2f}]"
 
     elif action == "SELL":
         held = pos["qty"] if (pos and side == "long") else 0.0
         qty = held * size_pct / 100.0
-        eur_amount = qty * price
-        if held <= 1e-9 or eur_amount < MIN_TRADE_EUR:
+        if held <= 1e-9 or qty * price < MIN_TRADE_EUR:
             detail, action = f"SELL {label} skipped — niente long da vendere.", "HOLD"
         else:
-            new_qty = held - qty
-            cash += eur_amount
+            entry = pos.get("avg_cost") or price
+            margin = pos.get("collateral") or 0.0
+            margin_release = margin * (qty / held)
+            pnl = (price - entry) * qty
+            cash += margin_release + pnl
             _set_cash(cash)
+            new_qty = held - qty
             keep = new_qty > 1e-9
-            _upsert_position(symbol, label, "long", new_qty, pos.get("avg_cost"), 0.0,
+            _upsert_position(symbol, label, "long", new_qty, entry, margin - margin_release,
                              pos.get("active_stop") if keep else None,
                              pos.get("active_take") if keep else None, price)
             executed = True
-            detail = f"SELL {label}: {qty:.6f} → €{eur_amount:,.2f} @ €{price:,.2f}."
+            eur_amount = qty * price
+            detail = f"SELL {label}: {qty:.6f} @ €{price:,.2f} (P&L €{pnl:,.2f})."
 
     elif action == "SHORT":
         if side == "long":
             detail, action = f"SHORT {label} ignorato — esiste una LONG aperta (prima SELL).", "HOLD"
         else:
-            eur_amount = cash * size_pct / 100.0   # collateral
+            margin = cash * size_pct / 100.0   # margin locked
             if eur_cap is not None:
-                eur_amount = min(eur_amount, eur_cap)
-            eur_amount = min(eur_amount, cash)
-            if eur_amount < MIN_TRADE_EUR:
-                detail, action = f"SHORT {label} skipped — €{eur_amount:,.2f} sotto minimo.", "HOLD"
+                margin = min(margin, eur_cap)
+            margin = min(margin, cash)
+            if margin < MIN_TRADE_EUR:
+                detail, action = f"SHORT {label} skipped — €{margin:,.2f} di margine sotto minimo.", "HOLD"
             else:
-                qty = eur_amount / price
+                eff_stop = stop_loss if stop_loss is not None else (pos.get("active_stop") if pos else None)
+                lev_use = _cap_leverage_to_stop(lev, price, eff_stop)
+                notional = margin * lev_use
+                qty = notional / price
                 held = pos["qty"] if pos else 0.0
                 new_qty = held + qty
                 entry = (held * pos["avg_cost"] + qty * price) / new_qty if (pos and pos.get("avg_cost")) else price
-                new_coll = (pos.get("collateral") or 0.0 if pos else 0.0) + eur_amount
-                cash -= eur_amount
+                new_coll = (pos.get("collateral") or 0.0 if pos else 0.0) + margin
+                cash -= margin
                 _set_cash(cash)
                 _upsert_position(symbol, label, "short", new_qty, entry, new_coll,
                                  stop_loss or (pos.get("active_stop") if pos else None),
                                  take_profit or (pos.get("active_take") if pos else None), price)
                 executed = True
-                detail = f"SHORT {label}: collat €{eur_amount:,.2f} → {qty:.6f} @ €{price:,.2f}."
+                eur_amount = margin
+                eff_lev = (new_qty * entry) / new_coll if new_coll else lev_use
+                detail = f"SHORT {label}: margine €{margin:,.2f} × {eff_lev:.1f}x → {qty:.6f} @ €{price:,.2f}."
+                if eff_stop and lev_use < lev - 0.05:
+                    detail += f" [leva {lev:.1f}x→{lev_use:.1f}x per stop a €{eff_stop:,.2f}]"
 
     elif action == "COVER":
         held = pos["qty"] if (pos and side == "short") else 0.0
@@ -331,14 +386,50 @@ def execute_order(
             "detail": detail, "qty": qty, "eur_amount": eur_amount}
 
 
+def _liquidation_price(p: dict[str, Any]) -> float | None:
+    """
+    Price at which unrealised loss wipes out the margin (collateral). Beyond it the
+    position is force-closed and the margin is lost. None if unleveraged data missing.
+      long  → entry - margin/qty   (entry × (1 - 1/leverage))
+      short → entry + margin/qty   (entry × (1 + 1/leverage))
+    """
+    margin = p.get("collateral") or 0.0
+    entry, qty = p.get("avg_cost"), p.get("qty") or 0.0
+    if not entry or qty <= 1e-9 or margin <= 0:
+        return None
+    dist = margin / qty
+    return entry - dist if p["side"] == "long" else entry + dist
+
+
+def _effective_stop(p: dict[str, Any]) -> tuple[float | None, bool]:
+    """
+    Fold liquidation into the protective stop: price reaches the level nearer to
+    spot first, so for a long that's the HIGHER of (stop, liq); for a short the
+    LOWER. Returns (level, is_liquidation).
+    """
+    stop = p.get("active_stop")
+    liq = _liquidation_price(p)
+    if liq is None:
+        return stop, False
+    if p["side"] == "long":
+        if stop is None or liq > stop:
+            return liq, True
+    else:
+        if stop is None or liq < stop:
+            return liq, True
+    return stop, False
+
+
 def intrabar_exit_decision(p: dict[str, Any], candles: list[tuple[int, float, float]]) -> dict[str, Any] | None:
     """
-    Did the price touch this position's stop/target BETWEEN cycles? Scans the
-    (ts_ms, high, low) candles after the position's last update, in time order,
-    and returns the level to fill at (as a resting order would) — or None.
-    Stop has priority over target within the same candle (conservative).
+    Did the price touch this position's stop/target/liquidation BETWEEN cycles?
+    Scans the (ts_ms, high, low) candles after the position's last update, in time
+    order, and returns the level to fill at (as a resting order would) — or None.
+    Stop/liquidation has priority over target within the same candle (conservative).
     """
-    stop, take, side = p.get("active_stop"), p.get("active_take"), p["side"]
+    take, side = p.get("active_take"), p["side"]
+    stop, stop_is_liq = _effective_stop(p)
+    stop_lbl = "LIQUIDAZIONE" if stop_is_liq else "STOP-LOSS"
     if not (stop or take) or not candles:
         return None
     try:
@@ -350,12 +441,12 @@ def intrabar_exit_decision(p: dict[str, Any], candles: list[tuple[int, float, fl
             continue
         if side == "long":
             if stop and lo <= stop:
-                return {"level": stop, "reason": f"STOP-LOSS {p['label']} (long) toccato a €{stop:,.2f} tra i cicli"}
+                return {"level": stop, "reason": f"{stop_lbl} {p['label']} (long) toccato a €{stop:,.2f} tra i cicli"}
             if take and hi >= take:
                 return {"level": take, "reason": f"TAKE-PROFIT {p['label']} (long) toccato a €{take:,.2f} tra i cicli"}
         else:  # short
             if stop and hi >= stop:
-                return {"level": stop, "reason": f"STOP-LOSS {p['label']} (short) toccato a €{stop:,.2f} tra i cicli"}
+                return {"level": stop, "reason": f"{stop_lbl} {p['label']} (short) toccato a €{stop:,.2f} tra i cicli"}
             if take and lo <= take:
                 return {"level": take, "reason": f"TAKE-PROFIT {p['label']} (short) toccato a €{take:,.2f} tra i cicli"}
     return None
@@ -372,16 +463,18 @@ def check_exits(prices: dict[str, float]) -> list[dict[str, Any]]:
         price = prices.get(p["symbol"], p.get("last_price"))
         if not price:
             continue
-        stop, take = p.get("active_stop"), p.get("active_take")
+        take = p.get("active_take")
+        stop, stop_is_liq = _effective_stop(p)
+        stop_lbl = "LIQUIDAZIONE" if stop_is_liq else "STOP-LOSS"
         reason = close_action = fill = None
         if p["side"] == "long":
             if stop and price <= stop:
-                reason, close_action, fill = f"STOP-LOSS {p['label']} (long) @ €{stop:,.2f}", "SELL", stop
+                reason, close_action, fill = f"{stop_lbl} {p['label']} (long) @ €{stop:,.2f}", "SELL", stop
             elif take and price >= take:
                 reason, close_action, fill = f"TAKE-PROFIT {p['label']} (long) @ €{take:,.2f}", "SELL", take
         else:  # short
             if stop and price >= stop:
-                reason, close_action, fill = f"STOP-LOSS {p['label']} (short) @ €{stop:,.2f}", "COVER", stop
+                reason, close_action, fill = f"{stop_lbl} {p['label']} (short) @ €{stop:,.2f}", "COVER", stop
             elif take and price <= take:
                 reason, close_action, fill = f"TAKE-PROFIT {p['label']} (short) @ €{take:,.2f}", "COVER", take
         if reason:
@@ -473,9 +566,13 @@ def format_state(state: dict[str, Any]) -> str:
             pnl = f"{p['pnl_pct']:+.1f}%" if p["pnl_pct"] is not None else "—"
             stp = f" stop €{p['active_stop']:,.0f}" if p["active_stop"] else ""
             tkp = f" target €{p['active_take']:,.0f}" if p["active_take"] else ""
+            lev = p.get("leverage") or 1.0
+            levs = f" {lev:.1f}x" if lev > 1.01 else ""
+            liq = _liquidation_price(p) if lev > 1.01 else None
+            liqs = f" liq €{liq:,.0f}" if liq else ""
             lines.append(
-                f"   · {p['side'].upper()} {p['label']}: {p['qty']:.6f} @ €{(p['avg_cost'] or 0):,.2f} "
-                f"→ €{p['value']:,.2f} ({pnl}){stp}{tkp}")
+                f"   · {p['side'].upper()}{levs} {p['label']}: {p['qty']:.6f} @ €{(p['avg_cost'] or 0):,.2f} "
+                f"(margin €{p['collateral']:,.2f}) → €{p['value']:,.2f} ({pnl}){stp}{tkp}{liqs}")
     else:
         lines.append("- Open positions: none (100% cash)")
     return "\n".join(lines)

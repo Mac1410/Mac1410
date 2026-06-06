@@ -122,15 +122,26 @@ meccanica — al livello prefissato — non discrezionale.**
 - **Analizza TUTTO l'universo** di cripto, ma **apri solo le poche (0–3)
   opportunità più probabili**: mai più di 3 posizioni contemporanee. Si interviene
   solo sui nomi dove il quadro multi-timeframe e i livelli si allineano meglio.
-- **Investire tutto NON è obbligatorio.** Se nessun setup convince (mercato
-  laterale, segnali deboli o in conflitto), **non si fa nulla**: meglio **zero
-  posizioni e 100% cash** che forzare un trade. La liquidità è una posizione
-  legittima, non un'occasione persa.
+- **Sempre pienamente investiti.** Il capitale disponibile va impiegato per
+  intero a ogni ciclo: **niente cassa ferma, mai 100% liquidità**. Si riempiono
+  tutti gli slot con le migliori occasioni del momento — long sui più forti,
+  short sui più deboli. La convinzione decide **direzione, size e leva** di ogni
+  nome (setup deboli → size piccola e leva bassa), ma non giustifica restare
+  liquidi: un nome marginale si prende comunque, piuttosto che lasciare capitale
+  inattivo.
 - Quando invece i setup ci sono, **concentra** sui trend più forti — disposti a
   pesare molto un singolo nome (fino al massimo consentito dal sistema).
-- **Niente leva** (vincolo del sistema: gli short sono coperti dal cash 1:1).
-  L'aggressività sta nella **concentrazione**, negli **stop ampi** e nella
-  **prontezza a shortare** — non nella leva.
+- **Leva 1x–5x, scelta per ogni trade** (sia long sia short). Il `size_pct`
+  fissa il **margine** impegnato; l'esposizione è margine × leva. La leva si
+  decide da **convinzione + volatilità**: default 1x–2x, 3x solo su setup puliti
+  ad alta probabilità, 4x–5x riservata alle strutture migliori e poco rumorose.
+- **Rischio di liquidazione**: una posizione viene chiusa d'ufficio (margine
+  perso) se il prezzo si muove di ~1/leva contro l'ingresso. Lo **stop_loss deve
+  stare DENTRO** quella distanza, così scatta prima della liquidazione; se uno
+  stop tecnico sensato cadrebbe oltre, **si abbassa la leva**. Più leva ⇒ stop più
+  stretto e definito. L'aggressività sta nella **concentrazione**, nella
+  **prontezza a shortare** e in una **leva calibrata** — mai in stop larghi che
+  rischiano la liquidazione.
 
 ## Regole di disciplina
 1. Opera con il trend, mai contro "perché è sceso/salito troppo".

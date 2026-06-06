@@ -36,8 +36,8 @@ from telegram_alert import send_telegram
 
 MODEL = "claude-sonnet-4-6"
 MAX_POSITIONS = 3               # scan many, act on few — selective
-MAX_POSITION_PCT = 60.0         # cap any single position at 60% of equity
-FULLY_INVESTED = False          # may invest up to 100%, but NOT forced — cash is allowed
+MAX_POSITION_PCT = 65.0         # cap any single position at 65% of equity → Claude weights freely
+FULLY_INVESTED = True           # ALWAYS deploy ~100% of cash — no idle liquidity
 MIN_CASH_SWEEP = 5.0            # below this, leftover cash is left alone
 
 _client: anthropic.Anthropic | None = None
@@ -55,13 +55,14 @@ DECISION_SCHEMA = {
                 "properties": {
                     "symbol": {"type": "string", "enum": _LABELS},
                     "action": {"type": "string", "enum": ["BUY", "SELL", "SHORT", "COVER", "HOLD"]},
-                    "size_pct": {"type": "number", "description": "BUY/SHORT: % of free cash. SELL/COVER: % of that position. 0 for HOLD."},
+                    "size_pct": {"type": "number", "description": "BUY/SHORT: % of free cash used as MARGIN. SELL/COVER: % of that position. 0 for HOLD."},
+                    "leverage": {"type": "number", "description": "BUY/SHORT: leverage 1 to 5 (exposure = margin × leverage). Use 1 for SELL/COVER/HOLD."},
                     "confidence": {"type": "number", "description": "0 to 1."},
                     "thesis": {"type": "string", "description": "Max 2 sentences."},
                     "stop_loss": {"type": ["number", "null"]},
                     "take_profit": {"type": ["number", "null"]},
                 },
-                "required": ["symbol", "action", "size_pct", "confidence", "thesis", "stop_loss", "take_profit"],
+                "required": ["symbol", "action", "size_pct", "leverage", "confidence", "thesis", "stop_loss", "take_profit"],
                 "additionalProperties": False,
             },
         },
@@ -78,15 +79,30 @@ make money when the market rises (long) AND when it falls (short).
 Universe: {", ".join(_LABELS)}.
 
 Actions per symbol:
-- BUY   = open/add a LONG (profit if price rises). size_pct = % of free cash.
-- SELL  = reduce/close a LONG. size_pct = % of that long.
-- SHORT = open/add a SHORT (profit if price FALLS). size_pct = % of free cash locked as collateral.
-- COVER = reduce/close a SHORT. size_pct = % of that short.
-- HOLD  = do nothing on that name.
+- BUY   = open/add a LONG (profit if price rises). size_pct = % of free cash used as MARGIN; leverage = 1–5x.
+- SELL  = reduce/close a LONG. size_pct = % of that long. leverage = 1.
+- SHORT = open/add a SHORT (profit if price FALLS). size_pct = % of free cash used as MARGIN; leverage = 1–5x.
+- COVER = reduce/close a SHORT. size_pct = % of that short. leverage = 1.
+- HOLD  = do nothing on that name. leverage = 1.
 
 Rules (philosophy + skills):
-- NO LEVERAGE. Shorts are cash-collateralised 1:1, so (longs + short collateral) \
-never exceeds your capital. A symbol is either long OR short — close it to flip.
+- LEVERAGE 1x–5x, chosen PER TRADE via the `leverage` field (both longs and \
+shorts). size_pct sets the MARGIN (% of free cash committed); EXPOSURE = margin × \
+leverage. Margin is locked from cash, so total margin across positions never \
+exceeds your capital — but leverage scales BOTH gains and losses on that margin. \
+Choose leverage from CONVICTION + VOLATILITY: default 1x–2x; use 3x only on clean, \
+high-probability setups; reserve 4x–5x for the very best, low-noise structures. A \
+symbol is either long OR short — close it to flip.
+- LIQUIDATION RISK: a position is force-closed and its MARGIN IS LOST if price \
+moves ~1/leverage against your entry (≈50% at 2x, ≈33% at 3x, ≈25% at 4x, ≈20% at \
+5x). Your pre-committed stop_loss MUST sit INSIDE that liquidation distance so the \
+stop fills first — never place a stop wider than the liquidation move, and if a \
+sound technical stop would fall beyond it, LOWER the leverage until the stop fits. \
+Higher leverage therefore demands a tighter, well-defined technical stop. \
+SAFETY NET: the system auto-reduces your requested leverage if it would put \
+liquidation within ~1.5× the stop distance, so the stop always fills before \
+liquidation — but still size leverage to your stop yourself; do not rely on the \
+cap, as it only lowers (never raises) and a clipped leverage means smaller size.
 - HORIZON: trades are SHORT — minutes to a few hours. Open with that outlook and \
 size stops/targets to that breath (read them from the short-timeframe structure: \
 recent minute/hourly highs-lows and Bollinger bands), NOT wide multi-day swing stops.
@@ -97,7 +113,9 @@ you counter-trend. A minute MACD turning positive inside a DAILY DOWNTREND is a 
 chance to SHORT into strength, NOT a reason to go long. So: daily downtrend → only \
 SHORT or cash (time the short on a minute up-tick toward resistance); daily uptrend \
 → only LONG (time on a minute dip). The hold horizon stays minutes/hours. If the \
-daily is flat/choppy with no clear bias, stay out.
+daily is flat/choppy, take only a SMALL, LOW-leverage position in the marginally \
+favoured direction (or give that slot to a clearer name) — the book still stays \
+fully deployed.
 - LOCAL HIGHS/LOWS: each asset also lists recent local highs/lows per timeframe \
 (support below the price / resistance above). Use them to ANTICIPATE BOUNCES — \
 near strong multi-timeframe SUPPORT a rebound is more likely (favour long / cover \
@@ -111,12 +129,17 @@ stopped out). SHORT the weakest names EVEN WHEN RSI IS LOW, as long as momentum 
 stays negative (a low RSI alone is NOT a reason to skip a short in a falling \
 market). Only skip a short at CONFIRMED EXHAUSTION: extreme RSI (≲10) AND a \
 reversal actually underway (minute MACD turning positive / bullish divergence). \
-In a confirmed UPTREND prefer LONGS on the strongest; in chop, stay light.
-- SCAN THE WHOLE universe, but OPEN only the few (0–{MAX_POSITIONS}) \
-highest-probability setups — never more than {MAX_POSITIONS} positions at a time. \
-It is perfectly fine to open ZERO and stay 100% in cash if nothing clearly \
-qualifies: do NOT force trades. Selectivity and conviction over breadth — only \
-the names where the multi-timeframe picture and the levels line up best.
+In a confirmed UPTREND prefer LONGS on the strongest; in chop, stay light \
+(small size, low leverage) but still deployed.
+- STAY FULLY INVESTED: deploy ~100% of free cash EVERY cycle across \
+{MAX_POSITIONS} positions — holding idle cash or staying flat is NOT allowed. \
+Fill all {MAX_POSITIONS} slots with the best opportunities available right now: \
+LONG the strongest names in an uptrend, SHORT the weakest in a downtrend. \
+Conviction still decides the DIRECTION, the size and the leverage of each name \
+(weakest setups → smaller size + lower leverage), but it never justifies sitting \
+in cash. Set size_pct so the orders together commit essentially all free cash \
+(any residual is auto-swept into the book). Spread across {MAX_POSITIONS} names \
+rather than piling everything into one.
 - EVERY new position needs a ≤2-sentence thesis AND BOTH a pre-committed
   stop_loss AND take_profit (NEVER null). Place them at TECHNICAL LEVELS read
   from the data — the recent high/low of the window, the Bollinger bands, nearby
@@ -127,7 +150,8 @@ the names where the multi-timeframe picture and the levels line up best.
   · SHORT → stop_loss just above the recent high / upper band;
     take_profit at the recent low / lower band / next support.
   Prefer setups where these chart levels give a favourable reward:risk (target
-  roughly ≥ 2× the stop distance); if the structure offers poor R:R, stay out.
+  roughly ≥ 2× the stop distance); if a name offers poor R:R, give that slot to a \
+  better name rather than holding cash.
 - When a stop OR a target is hit, the position auto-closes; the next cycle
   re-decides from scratch (re-enter same direction, flip, or stay out). Take the
   profit at the target — do NOT "let it run".
@@ -153,8 +177,9 @@ def decide(snaps: dict, state: dict) -> dict[str, Any]:
         f"{market_md}\n"
         "Your virtual account:\n"
         f"{account_md}\n\n"
-        f"Constraints: max {MAX_POSITIONS} open positions; any single position "
-        f"capped at {MAX_POSITION_PCT:.0f}% of account value.\n\n"
+        f"Constraints: max {MAX_POSITIONS} open positions; any single position's "
+        f"MARGIN capped at {MAX_POSITION_PCT:.0f}% of account value (leverage 1–5x "
+        f"multiplies exposure on top of that margin).\n\n"
         "Recent trades:\n"
         f"{recent_md}\n"
         "=== END CONTEXT ==="
@@ -199,8 +224,8 @@ def _execute_orders(decision: dict, prices: dict, snaps: dict) -> list[dict[str,
     state = paper_broker.get_state(prices)
     equity = state["value"]
     held = {p["symbol"] for p in state["positions"]}
-    used = {p["symbol"]: (p["collateral"] if p["side"] == "short" else p["value"])
-            for p in state["positions"]}
+    # Cap is on MARGIN committed per position (leverage multiplies exposure on top).
+    used = {p["symbol"]: (p.get("collateral") or 0.0) for p in state["positions"]}
     cap_value = equity * MAX_POSITION_PCT / 100.0
 
     for o in opening:
@@ -216,7 +241,8 @@ def _execute_orders(decision: dict, prices: dict, snaps: dict) -> list[dict[str,
             symbol=tv, label=o["symbol"], action=o["action"], size_pct=o["size_pct"],
             price=prices[tv], eur_cap=eur_cap, confidence=o.get("confidence"),
             thesis=o.get("thesis"), stop_loss=o.get("stop_loss"),
-            take_profit=o.get("take_profit"), source=snaps.get(tv, {}).get("source"))
+            take_profit=o.get("take_profit"), source=snaps.get(tv, {}).get("source"),
+            leverage=o.get("leverage"))
         if res["executed"]:
             held.add(tv)
             used[tv] = used.get(tv, 0.0) + res["eur_amount"]
@@ -227,19 +253,19 @@ def _execute_orders(decision: dict, prices: dict, snaps: dict) -> list[dict[str,
 
 def _sweep_cash(prices: dict, snaps: dict) -> list[dict[str, Any]]:
     """
-    Full-deployment policy: distribute any leftover cash across the currently
-    held positions (proportional to remaining room under the per-position cap),
-    so the book stays ~fully invested. Preserves each position's stop/target.
+    Full-deployment policy: distribute ALL leftover cash across the currently held
+    positions — BOTH longs (add via BUY) and shorts (add via SHORT) — proportional
+    to remaining MARGIN room under the per-position cap, so the book stays ~fully
+    invested. Each top-up keeps the position's existing leverage, stop and target.
     """
     state = paper_broker.get_state(prices)
     cash, equity = state["cash_eur"], state["value"]
-    longs = [p for p in state["positions"] if p["side"] == "long"]
-    # If the book holds any short, respect the model's allocation — don't force-deploy.
-    if cash < MIN_CASH_SWEEP or not longs or any(p["side"] == "short" for p in state["positions"]):
+    positions = state["positions"]
+    if cash < MIN_CASH_SWEEP or not positions:
         return []
 
-    cap_value = equity * MAX_POSITION_PCT / 100.0
-    rooms = {p["symbol"]: (p, max(0.0, cap_value - p["value"])) for p in longs}
+    cap_value = equity * MAX_POSITION_PCT / 100.0  # cap is on committed MARGIN
+    rooms = {p["symbol"]: (p, max(0.0, cap_value - (p.get("collateral") or 0.0))) for p in positions}
     total_room = sum(r for _, r in rooms.values())
     if total_room <= 0:
         return []
@@ -249,10 +275,12 @@ def _sweep_cash(prices: dict, snaps: dict) -> list[dict[str, Any]]:
         alloc = min(cash * room / total_room, room)
         if alloc < MIN_CASH_SWEEP:
             continue
+        action = "BUY" if p["side"] == "long" else "SHORT"
         res = paper_broker.execute_order(
-            symbol=sym, label=p["label"], action="BUY", size_pct=100.0,
+            symbol=sym, label=p["label"], action=action, size_pct=100.0,
             price=prices.get(sym, p["price"]), eur_cap=alloc, confidence=None,
             thesis="Full-deployment sweep — no idle cash.",
+            leverage=p.get("leverage") or 1.0,
             source=snaps.get(sym, {}).get("source"),
         )
         if res["executed"]:
@@ -260,7 +288,7 @@ def _sweep_cash(prices: dict, snaps: dict) -> list[dict[str, Any]]:
     return results
 
 
-FLAT_ANALYSIS_MIN_MINUTES = 30  # min minutes between non-exit (flat / free-capacity) analyses
+FLAT_ANALYSIS_MIN_MINUTES = 60  # min minutes between non-exit (flat / free-capacity) analyses
 FREE_CAPACITY_MIN_CASH = 50.0   # only re-analyze idle cash if at least this much is free
 
 
