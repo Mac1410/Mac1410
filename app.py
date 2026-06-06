@@ -215,7 +215,7 @@ with tab_bot:
     st.subheader("Crypto paper-trading bot")
     st.caption(
         "Virtual money only (€1000 start). Scans a focused universe "
-        "(BTC, ETH, SOL, XRP, ADA, BNB, DOGE, AVAX) — opens at most 3 positions "
+        "(BTC, ETH, SOL, XRP, BNB, ADA) — opens at most 3 positions "
         "(minutes/hours horizon), auto stop-loss / take-profit. Never sends real orders."
     )
 
